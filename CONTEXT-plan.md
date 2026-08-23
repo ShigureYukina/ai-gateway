@@ -69,7 +69,7 @@ sentrux_check_rules
 5. **Phase L 首个最小优化已落地并通过黑盒里程碑**：`gateway-admin` 的 `PostgresClientCostStore.checkAndRecordBoth(...)` 已从接口默认双调用收敛为单次 `jdbc.execute(ConnectionCallback)`，以减少成功路径 cost 记账的应用层 round-trip/回调开销；语义未变，`./scripts/verify.sh` 已通过
 6. **Phase L 第二个最小优化已落地并通过黑盒里程碑**：`gateway-admin` 的 `PostgresClientUsageStore.checkAndRecordBoth(...)` 已将 zero-token 分支的 daily/monthly 双 SELECT 收敛为单次按 period 批量读取，继续保持 `request_cnt` 与返回语义不变；`./scripts/verify.sh` 已通过
 7. **日志已完成一轮最小降噪**，后续不再以大面积日志整理为主线，仅补充性能归因所需的关键指标与摘要输出
-8. 仓库**已有初始提交，但尚未配置 remote**；这不是当前代码实施阻塞项，但会影响后续分享/协作/备份，先记录为交付前置条件，不纳入本轮实施
+8. 仓库**已初始化 git 并完成初始基线提交**（`main` 分支，commit `fbc7f95`，663 文件）；本地默认门禁可正常运行。**尚未配置 remote**，后续分享/协作/备份需先配置远程仓库；不阻塞当前代码实施
 9. **已完成 1 轮多 Agent 静态性能审查（性能 / JVM / 数据库 / Spring / 压测总控）**，进一步确认：
    - 当前最高收益治理点仍是 `/v1/chat/completions` 成功路径后的 **PG 写放大** 与 **BatchFlusher 过载回退放大**
    - `gateway-admin` 的 usage summary / dashboard 读取路径存在明显 **N+1 / 按 client 循环读取** 风险，应作为性能次主线收敛项
@@ -254,7 +254,7 @@ aggregate 写缓冲（SQL 调用 -99%）、usage/cost CTE 合并、BatchFlusher 
 
 ### 现状
 
-仓库已有初始提交，但**尚未配置 remote**。
+仓库已完成初始基线提交（`main` 分支，commit `fbc7f95`，663 文件），但**尚未配置 remote**。
 
 ### 计划定位
 
