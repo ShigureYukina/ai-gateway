@@ -1,0 +1,20 @@
+spring:
+  config:
+    activate:
+      on-profile: local-file
+  profiles:
+    include: local
+  datasource:
+    # H2 文件模式：数据持久化到 ./data/gateway，重启不丢失
+    url: jdbc:h2:file:./data/gateway;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false

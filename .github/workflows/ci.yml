@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      - name: Compile & test (gateway-core)
+        run: ./mvnw -pl gateway-core -am -q test
+      - name: Integration tests (gateway-core)
+        run: ./mvnw -pl gateway-core -am failsafe:integration-test failsafe:verify
+      - name: Publish Test Results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Core Tests
+          path: 'gateway-core/target/surefire-reports/*.xml,gateway-core/target/failsafe-reports/*.xml'
+          reporter: java-junit
+
+  test-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      - name: Compile & test (gateway-admin)
+        run: ./mvnw -pl gateway-admin -am -q test
+      - name: Integration tests (gateway-admin)
+        run: ./mvnw -pl gateway-admin -am failsafe:integration-test failsafe:verify
+      - name: Publish Test Results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Admin Tests
+          path: 'gateway-admin/target/surefire-reports/*.xml,gateway-admin/target/failsafe-reports/*.xml'
+          reporter: java-junit
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Lint frontend
+        run: npm run lint
+        working-directory: frontend
+      - name: Test frontend
+        run: npm run test
+        working-directory: frontend
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+  checkstyle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      - name: Checkstyle (gateway-core)
+        run: ./mvnw -pl gateway-core -q checkstyle:check
+      - name: Checkstyle (gateway-admin)
+        run: ./mvnw -pl gateway-admin -q checkstyle:check
+      - name: Checkstyle (bootstrap)
+        run: ./mvnw -pl bootstrap -q checkstyle:check
+
+  regression:
+    needs: [test-core, test-admin, frontend, checkstyle]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Full regression test
+        run: ./scripts/regression.sh
+
+  supplement:
+    needs: [test-core, test-admin, frontend, checkstyle]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build JAR
+        run: ./mvnw -pl bootstrap -am package -DskipFrontendBuild=true -DskipTests -q
+      - name: Supplement tests
+        run: ./scripts/verify-supplement.sh
+      - name: User journey blackbox
+        run: ./scripts/user-journey-blackbox.sh

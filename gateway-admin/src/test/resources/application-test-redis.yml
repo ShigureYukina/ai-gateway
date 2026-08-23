@@ -1,0 +1,15 @@
+spring:
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: 123456
+      timeout: 2s
+
+gateway:
+  shared-state:
+    backend: redis
+    key-prefix: integration-test
+  limit:
+    requests-per-window: 100000
+    window: 10m

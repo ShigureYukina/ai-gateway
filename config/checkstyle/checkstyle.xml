@@ -1,0 +1,142 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+    Quality Gate Checkstyle Configuration for Simple AI Gateway.
+
+    Goals (priority order):
+    1. Catch real bugs and maintainability issues
+    2. Enforce import hygiene (no unused/star imports)
+    3. Basic naming and structural consistency
+    4. Match project's established coding style
+
+    All thresholds are calibrated for the existing codebase.
+    New code should generally meet these rules.
+-->
+<module name="Checker">
+
+    <!-- ===== File-Level Checks ===== -->
+    <module name="BeforeExecutionExclusionFileFilter">
+        <property name="fileNamePattern" value="module\-info\.java$"/>
+    </module>
+
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="error"/>
+    <property name="fileExtensions" value="java"/>
+
+    <!-- No tab characters in Java files -->
+    <module name="FileTabCharacter">
+        <property name="eachLine" value="true"/>
+    </module>
+
+    <!-- Newline at EOF -->
+    <module name="NewlineAtEndOfFile"/>
+
+    <!-- Line length: 200 to match project conventions -->
+    <module name="LineLength">
+        <property name="max" value="200"/>
+        <property name="ignorePattern" value="^package .*|^import .*|a href|href|http://|https://|ftp://"/>
+        <!-- Test files suppressed via suppressions.xml -->
+    </module>
+
+    <module name="TreeWalker">
+
+        <!-- ===== Import Hygiene (HIGH priority) ===== -->
+        <module name="AvoidStarImport">
+            <property name="severity" value="warning"/>
+            <property name="excludes" value="java.util,javax.swing"/>
+        </module>
+        <module name="UnusedImports">
+            <property name="processJavadoc" value="true"/>
+        </module>
+        <module name="RedundantImport"/>
+        <module name="IllegalImport"/>
+
+        <!-- ===== Naming (MEDIUM priority) ===== -->
+        <module name="PackageName">
+            <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+        </module>
+        <module name="TypeName"/>
+        <module name="ClassTypeParameterName">
+            <property name="format" value="(^[A-Z][0-9]?)$|([A-Z][a-zA-Z0-9]*[T]$)"/>
+        </module>
+        <module name="MethodName">
+            <property name="format" value="^[a-z][a-zA-Z0-9_]*$"/>
+        </module>
+        <module name="MethodTypeParameterName">
+            <property name="format" value="(^[A-Z][0-9]?)$|([A-Z][a-zA-Z0-9]*[T]$)"/>
+        </module>
+        <module name="ParameterName">
+            <property name="format" value="^[a-z][a-zA-Z0-9]*$"/>
+        </module>
+        <module name="LocalVariableName">
+            <property name="format" value="^[a-z][a-zA-Z0-9]*$"/>
+        </module>
+        <module name="LambdaParameterName">
+            <property name="format" value="^[a-z][a-zA-Z0-9]*$"/>
+        </module>
+        <module name="CatchParameterName">
+            <property name="format" value="^[a-z][a-zA-Z0-9]*$"/>
+        </module>
+        <module name="OuterTypeFilename"/>
+
+        <!-- ===== Brace Structure (MEDIUM priority) ===== -->
+        <module name="LeftCurly">
+            <!-- Match project convention: end-of-line braces -->
+            <property name="option" value="eol"/>
+        </module>
+        <module name="NeedBraces">
+            <property name="allowSingleLineStatement" value="true"/>
+            <property name="allowEmptyLoopBody" value="true"/>
+        </module>
+
+        <!-- ===== Modifiers (MEDIUM priority) ===== -->
+        <module name="ModifierOrder"/>
+        <module name="RedundantModifier"/>
+
+        <!-- ===== Coding Standards (HIGH priority for correctness) ===== -->
+        <module name="EqualsHashCode"/>
+        <module name="EmptyStatement"/>
+        <module name="OneStatementPerLine"/>
+        <module name="MultipleVariableDeclarations"/>
+        <module name="NoFinalizer"/>
+        <module name="DefaultComesLast"/>
+        <module name="StringLiteralEquality"/>
+        <module name="SimplifyBooleanExpression"/>
+        <module name="SimplifyBooleanReturn"/>
+        <module name="FallThrough"/>
+        <module name="MissingSwitchDefault">
+            <property name="severity" value="warning"/>
+        </module>
+        <module name="UnnecessarySemicolonInTryWithResources"/>
+        <module name="UnnecessarySemicolonAfterOuterTypeDeclaration"/>
+
+        <!-- ===== Class Design (MEDIUM priority) ===== -->
+        <module name="OneTopLevelClass"/>
+        <module name="FinalClass"/>
+        <module name="VisibilityModifier">
+            <property name="packageAllowed" value="true"/>
+            <property name="protectedAllowed" value="true"/>
+            <property name="allowPublicFinalFields" value="true"/>
+            <property name="allowPublicImmutableFields" value="true"/>
+        </module>
+        <module name="MutableException"/>
+
+        <!-- ===== Miscellaneous ===== -->
+        <module name="ArrayTypeStyle"/>
+        <module name="UpperEll"/>
+        <module name="CommentsIndentation"/>
+
+        <!-- ===== Suppression via comments ===== -->
+        <module name="SuppressionCommentFilter">
+            <property name="offCommentFormat" value="CHECKSTYLE\:OFF"/>
+            <property name="onCommentFormat" value="CHECKSTYLE\:ON"/>
+        </module>
+        <module name="SuppressWithNearbyCommentFilter">
+            <property name="commentFormat" value="CHECKSTYLE\:IGNORE\s+(\S+)"/>
+            <property name="checkFormat" value="$1"/>
+        </module>
+    </module>
+</module>

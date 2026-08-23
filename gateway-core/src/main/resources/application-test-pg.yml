@@ -1,0 +1,15 @@
+# Test profile for PostgreSQL integration tests
+spring:
+  datasource:
+    url: jdbc:postgresql://${GATEWAY_PG_HOST:127.0.0.1}:${GATEWAY_PG_PORT:5433}/${GATEWAY_PG_DATABASE:llm_gateway}
+    username: ${GATEWAY_PG_USERNAME:llm_user}
+    password: ${GATEWAY_PG_PASSWORD:llm_password}
+  jpa:
+    hibernate:
+      ddl-auto: none
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 6
+    validate-on-migrate: false

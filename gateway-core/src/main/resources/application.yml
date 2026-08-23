@@ -1,0 +1,86 @@
+server:
+  max-http-request-header-size: 16KB
+#
+# 参考配置 — Spring Boot fat JAR 部署时不加载本文件。
+# 实际生效的 application.yml 在 bootstrap 模块中，所有 gateway.* 配置以 bootstrap 为准。
+# 修改默认值后请同步更新 bootstrap/src/main/resources/application.yml。
+
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    doc-expansion: none
+    try-it-out-enabled: true
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: chat
+      paths-to-match: /v1/**
+    - group: auth
+      paths-to-match: /auth/**
+    - group: admin
+      paths-to-match: /admin/**
+    - group: internal
+      paths-to-match: /internal/**
+    - group: system
+      paths-to-match: /healthz**
+
+spring:
+  application:
+    name: simple-ai-gateway
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+  codec:
+    max-in-memory-size: 1MB
+  datasource:
+    url: jdbc:postgresql://${GATEWAY_PG_HOST:127.0.0.1}:${GATEWAY_PG_PORT:5433}/${GATEWAY_PG_DATABASE:llm_gateway}
+    username: ${GATEWAY_PG_USERNAME:llm_user}
+    password: ${GATEWAY_PG_PASSWORD:llm_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${GATEWAY_PG_POOL_SIZE:50}
+      minimum-idle: 5
+      connection-timeout: 5000
+      idle-timeout: 300000
+      max-lifetime: 600000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 6
+    validate-on-migrate: false
+  data:
+    redis:
+      host: ${GATEWAY_REDIS_HOST:127.0.0.1}
+      port: ${GATEWAY_REDIS_PORT:6379}
+      password: ${GATEWAY_REDIS_PASSWORD:}
+      timeout: ${GATEWAY_REDIS_TIMEOUT:2s}
+
+management:
+  # Production hardening note: consider isolating actuator endpoints via `management.server.port: -1`
+  # and exposing only through a secured/internal channel when needed.
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  tracing:
+    sampling:
+      probability: ${MANAGEMENT_TRACING_PROBABILITY:0.05}
+  otlp:
+    tracing:
+      endpoint: ${MANAGEMENT_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

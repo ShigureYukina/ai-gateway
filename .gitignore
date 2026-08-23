@@ -1,0 +1,81 @@
+# ── Maven / Java ──────────────────────────────────────────────────
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.log
+*.lock
+*.iml
+*.ipr
+*.iws
+dependency-reduced-pom.xml
+
+# ── IDE ────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+.project
+.classpath
+.settings/
+*.sw?
+*~
+
+# ── OS ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Node / Frontend ────────────────────────────────────────────────
+frontend/node_modules/
+frontend/.vite/
+frontend/dist/
+frontend/dist-ssr/
+frontend/coverage/
+frontend/*.tsbuildinfo
+frontend/*.local
+frontend/playwright-report/
+frontend/test-results/
+bootstrap/src/main/resources/static/assets/
+bootstrap/src/main/resources/static/index.html
+bootstrap/src/main/resources/static/favicon.svg
+bootstrap/src/main/resources/static/icons.svg
+
+# ── Environment ────────────────────────────────────────────────────
+.env
+.env.local
+*.env.local
+
+# ── Python (scripts) ───────────────────────────────────────────────
+__pycache__/
+*.pyc
+
+# ── Blackbox Test Runtime ──────────────────────────────────────────
+.regression-logs/
+.user-journey-logs/
+.verify-regression-patterns-logs/
+.init-admin-logs/
+
+# ── Browser Automation ─────────────────────────────────────────────
+.playwright-mcp/
+
+# ── Build / Stress Test Artifacts ──────────────────────────────────
+build/
+
+# ── H2 Local File Database ────────────────────────────────────────
+data/
+
+# ── Docker ─────────────────────────────────────────────────────────
+.dockerignore
+
+# ── Root-level non-project artifacts ───────────────────────────────
+# Personal / scratch files unrelated to ai-gateway
+resume.html
+resume-backup.html
+resume-app.txt
+
+# Ad-hoc QA text/PNG snapshots
+qa-*.txt
+qa-*.png
+
+# ── Local tool working directories ─────────────────────────────────
+# gstack skill outputs (generated QA reports, etc.)
+.gstack/

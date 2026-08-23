@@ -1,0 +1,51 @@
+# Development profile — optimized for local dev + benchmarking
+#
+# 设计原则：
+#   1. 压测会干扰的功能 → 关闭（避免成为瓶颈或干扰源）
+#   2. 帮助定位问题的功能 → 开启（可观测性优先）
+#   3. 限流/配额 → 高阈值（避免误触发）
+
+spring:
+  flyway:
+    validate-on-migrate: false
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+
+gateway:
+  # === 压测友好配置 ===
+
+  # 紧急限流：关闭（压测时不需要全局 kill-switch）
+  operational:
+    maintenance-mode: false
+    emergency-rate-limit:
+      enabled: false
+
+  # 并发限制：关闭（压测需要高并发，避免 acquire 拒绝）
+  concurrent-limit:
+    enabled: false
+
+  # 请求追踪：开启（调试压测问题需要看请求/响应体）
+  tracing:
+    enabled: true
+
+  # models.dev 同步：开启（保持模型目录最新）
+  sync:
+    models-dev:
+      enabled: true
+
+  # 限流：高阈值（压测 20-200 并发，每秒可能数百请求）
+  auth:
+    enabled: true
+  limit:
+    requests-per-window: 100000
+    window: 1m
+
+  # 熔断：关闭重试（压测时重试会掩盖真实延迟）
+  resilience:
+    max-attempts: 1
+    retryable-failure-threshold: 100
+    failure-window: 5s
+    open-duration: 5s

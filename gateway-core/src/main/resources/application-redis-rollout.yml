@@ -1,0 +1,16 @@
+spring:
+  data:
+    redis:
+      host: ${GATEWAY_REDIS_HOST:127.0.0.1}
+      port: ${GATEWAY_REDIS_PORT:6379}
+      password: ${GATEWAY_REDIS_PASSWORD:}
+      timeout: ${GATEWAY_REDIS_TIMEOUT:2s}
+
+gateway:
+  shared-state:
+    backend: redis
+    key-prefix: ${GATEWAY_REDIS_KEY_PREFIX:gateway-rollout}
+  # rollout 验证建议将限流阈值调低，便于双实例快速观察共享状态
+  limit:
+    requests-per-window: ${GATEWAY_ROLLOUT_RATE_LIMIT:2}
+    window: 1m

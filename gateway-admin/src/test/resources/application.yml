@@ -1,0 +1,16 @@
+spring:
+  flyway:
+    enabled: false
+  jpa:
+    open-in-view: false
+
+gateway:
+  security:
+    block-internal-urls: false
+  auth:
+    jwt:
+      secret: test-secret-key-for-unit-tests-32chars
+
+security:
+  password:
+    allow-plaintext: true
