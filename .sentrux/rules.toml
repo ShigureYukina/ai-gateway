@@ -1,0 +1,25 @@
+# sentrux 仅支持 [constraints]、[[layers]]、[[boundaries]] 三类规则。
+# 旧版 [[rules]] / id / level / scope / match / forbid 为仓库历史误用，
+# sentrux 会静默忽略，导致 rules_checked=0。这里改为 sentrux 官方支持格式。
+#
+# 注意：本仓库需要表达的是“禁止反向依赖”，不是严格分层只允许相邻层访问。
+# 因此此处仅使用精确 [[boundaries]]，避免 [[layers]] 把合法的 admin -> core、
+# bootstrap -> core 访问也判成 layer_direction 违规。
+
+[constraints]
+# 当前先只启用结构边界规则；数值阈值后续基于稳定基线再收紧，避免误伤现状。
+
+[[boundaries]]
+from = "gateway-core/src/main/java/**"
+to = "gateway-admin/src/main/java/**"
+reason = "gateway-core 必须保持纯 core 边界，禁止依赖 gateway-admin。"
+
+[[boundaries]]
+from = "gateway-core/src/main/java/**"
+to = "bootstrap/src/main/java/**"
+reason = "gateway-core 不能依赖 bootstrap；bootstrap 只负责装配与启动。"
+
+[[boundaries]]
+from = "gateway-admin/src/main/java/**"
+to = "bootstrap/src/main/java/**"
+reason = "gateway-admin 不能反向依赖 bootstrap；保持 bootstrap -> admin -> core 单向依赖。"

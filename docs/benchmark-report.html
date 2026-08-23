@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Gateway — Performance Benchmark Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg: #0f172a; --card: #1e293b; --border: #334155; --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.4rem; font-weight: 600; margin: 2rem 0 1rem; color: var(--accent); }
+  h3 { font-size: 1.1rem; font-weight: 600; margin: 1.5rem 0 0.75rem; }
+  .subtitle { color: var(--muted); font-size: 0.95rem; margin-bottom: 2rem; }
+  .grid { display: grid; gap: 1.5rem; }
+  .grid-2 { grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); }
+  .grid-4 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+  .card h3 { margin-top: 0; }
+  .stat-card { text-align: center; }
+  .stat-card .value { font-size: 2.2rem; font-weight: 700; color: var(--accent); }
+  .stat-card .label { font-size: 0.85rem; color: var(--muted); margin-top: 0.25rem; }
+  .stat-card .delta { font-size: 0.9rem; margin-top: 0.5rem; }
+  .delta.up { color: var(--green); }
+  .delta.down { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .chart-wrap { position: relative; height: 320px; }
+  .tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 6px; font-size: 0.75rem; font-weight: 500; }
+  .tag-green { background: rgba(74,222,128,0.15); color: var(--green); }
+  .tag-blue { background: rgba(56,189,248,0.15); color: var(--accent); }
+  .tag-yellow { background: rgba(251,191,36,0.15); color: var(--yellow); }
+  .phase { border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1rem 0; }
+  .phase h4 { font-size: 0.95rem; font-weight: 600; }
+  .phase p { font-size: 0.85rem; color: var(--muted); }
+  .legend { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 0.5rem 0; font-size: 0.8rem; color: var(--muted); }
+  .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 0.4rem; vertical-align: middle; }
+  @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } .grid-4 { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>AI Gateway Performance Benchmark</h1>
+<p class="subtitle">Spring Boot WebFlux · 2-core VM · In-memory backend · Mock upstream (1.7ms) · May 2026</p>
+
+<!-- ===== Summary Cards ===== -->
+<h2>Optimization Journey Summary</h2>
+<div class="grid grid-4">
+  <div class="card stat-card">
+    <div class="value">709</div>
+    <div class="label">Stream req/s (peak)</div>
+    <div class="delta up">+273% from 190</div>
+  </div>
+  <div class="card stat-card">
+    <div class="value">127ms</div>
+    <div class="label">Stream P50 latency</div>
+    <div class="delta up">−71% from 433ms</div>
+  </div>
+  <div class="card stat-card">
+    <div class="value">0%</div>
+    <div class="label">Gateway 5xx errors</div>
+    <div class="delta up">from high error rate</div>
+  </div>
+  <div class="card stat-card">
+    <div class="value">46</div>
+    <div class="label">E2E tests passing</div>
+    <div class="delta up">9 test files · 1.6min</div>
+  </div>
+</div>
+
+<!-- ===== Optimization Phases ===== -->
+<h2>Optimization Phases</h2>
+<div class="grid grid-2">
+  <div class="card">
+    <div class="phase">
+      <h4>Phase 0 — Baseline</h4>
+      <p>All hot-path ops on <code>boundedElastic</code> (40-thread cap). Synchronized rate limiter. Duplicate limiter releases. Per-chunk usage scanning.</p>
+    </div>
+    <div class="phase" style="border-color: var(--green);">
+      <h4>Phase 1 — Stream Hot Path Cleanup <span class="tag tag-green">+238%</span></h4>
+      <p><code>boundedElastic → parallel()</code> for in-memory backend. Conditional <code>[DONE]</code> sentinel. Simplified usage guard (<code>contains("usage")</code> only). Removed 4 duplicate <code>concurrentRequestLimiter.release()</code> calls.</p>
+    </div>
+    <div class="phase" style="border-color: var(--yellow);">
+      <h4>Phase 2 — Resilience4j + Netty Tuning <span class="tag tag-yellow">+10%</span></h4>
+      <p><code>decorateStreamFlux()</code>: single CB+Bulkhead check at subscribe, no per-signal operators, no retry on Flux. Reverted Netty loop threads to CPU core count.</p>
+    </div>
+    <div class="phase" style="border-color: var(--accent);">
+      <h4>Phase 3 — Correctness Fixes</h4>
+      <p>Fixed <code>FORCED_OPEN</code> CB state bypass for streams. Tightened <code>[DONE]</code> detection to <code>data: [DONE]</code>. Verified no double-release remains.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Key Metrics by Phase (Node.js load test, stream-only, 100 concurrency)</h3>
+    <table>
+      <tr><th>Phase</th><th>req/s</th><th>P50</th><th>P95</th><th>P99</th></tr>
+      <tr><td>Baseline</td><td class="num">190</td><td class="num">433ms</td><td class="num">376ms</td><td class="num">563ms</td></tr>
+      <tr><td>Phase 1</td><td class="num">642</td><td class="num">139ms</td><td class="num">298ms</td><td class="num">513ms</td></tr>
+      <tr><td>Phase 2</td><td class="num" style="color:var(--green);font-weight:700">709</td><td class="num" style="color:var(--green);font-weight:700">127ms</td><td class="num" style="color:var(--green);font-weight:700">288ms</td><td class="num" style="color:var(--green);font-weight:700">467ms</td></tr>
+    </table>
+    <div class="chart-wrap" style="height:250px; margin-top:1rem;">
+      <canvas id="phaseChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ===== JMeter Results ===== -->
+<h2>JMeter Benchmark Results</h2>
+<div class="grid grid-2">
+  <div class="card">
+    <h3>Stream Latency Distribution</h3>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Redis-backed, 20 threads, 60s, median=77ms</p>
+    <div class="chart-wrap">
+      <canvas id="streamLatencyChart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Scenario Comparison</h3>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Redis-backed, 20 threads, 60s</p>
+    <div class="chart-wrap">
+      <canvas id="scenarioChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1.5rem;">
+  <h3>JMeter Results Summary</h3>
+  <table>
+    <tr>
+      <th>Scenario</th><th>Backend</th><th>Threads</th>
+      <th class="num">Samples</th><th class="num">req/s</th>
+      <th class="num">Median</th><th class="num">P90</th>
+      <th class="num">P95</th><th class="num">P99</th>
+      <th class="num">Error%</th>
+    </tr>
+    <tr>
+      <td>Non-stream</td><td><span class="tag tag-blue">Redis</span></td><td>20</td>
+      <td class="num">18,320</td><td class="num">305</td>
+      <td class="num">64ms</td><td class="num">—</td>
+      <td class="num">—</td><td class="num">110ms</td>
+      <td class="num">0.0%</td>
+    </tr>
+    <tr>
+      <td>Stream</td><td><span class="tag tag-blue">Redis</span></td><td>20</td>
+      <td class="num">15,262</td><td class="num">254</td>
+      <td class="num">77ms</td><td class="num">109ms</td>
+      <td class="num">113ms</td><td class="num">119ms</td>
+      <td class="num">0.0%</td>
+    </tr>
+    <tr>
+      <td>Mixed (70/30)</td><td><span class="tag tag-blue">Redis</span></td><td>20</td>
+      <td class="num">17,301</td><td class="num">289</td>
+      <td class="num">68ms</td><td class="num">—</td>
+      <td class="num">—</td><td class="num">114ms</td>
+      <td class="num">0.0%</td>
+    </tr>
+    <tr style="border-top:2px solid var(--border)">
+      <td>Stream</td><td><span class="tag tag-green">In-memory</span></td><td>100*</td>
+      <td class="num">42,540</td><td class="num" style="color:var(--green);font-weight:700">709</td>
+      <td class="num">127ms</td><td class="num">—</td>
+      <td class="num">288ms</td><td class="num">467ms</td>
+      <td class="num">0.0%</td>
+    </tr>
+  </table>
+  <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">* Node.js load test, 100 concurrent connections, 60s duration, parameterized mock (8 chunks, 1ms delay)</p>
+</div>
+
+<!-- ===== Throughput Over Time ===== -->
+<h2>Stream Throughput Over Time</h2>
+<div class="card">
+  <div class="chart-wrap" style="height:350px;">
+    <canvas id="timelineChart"></canvas>
+  </div>
+  <p style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem;">Each point = one JMeter run (stream scenario). Gaps correspond to code changes and configuration iterations.</p>
+</div>
+
+<!-- ===== Architecture ===== -->
+<h2>Benchmark Environment</h2>
+<div class="grid grid-2">
+  <div class="card">
+    <h3>Infrastructure</h3>
+    <table>
+      <tr><td>CPU</td><td>2 cores</td></tr>
+      <tr><td>Gateway</td><td>Spring Boot WebFlux + Netty</td></tr>
+      <tr><td>Backend</td><td>In-memory (CAS/ConcurrentHashMap)</td></tr>
+      <tr><td>Mock upstream</td><td>Node.js, port 18080, ~1.7ms response</td></tr>
+      <tr><td>Load generator</td><td>JMeter 5.6 + Node.js custom script</td></tr>
+      <tr><td>Client keys</td><td>11 keys (round-robin)</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Gateway Startup Flags</h3>
+    <pre style="font-size:0.75rem;color:var(--muted);white-space:pre-wrap;word-break:break-all;">--gateway.shared-state.backend=in_memory
+--spring.flyway.enabled=false
+--server.port=8081
+--gateway.operational.emergency-rate-limit.enabled=false
+--gateway.limit.requests-per-window=1000000
+--gateway.concurrent-limit.max-per-client=1000
+--gateway.concurrent-limit.max-global=10000
+--management.tracing.sampling.probability=0
+-Dreactor.schedulers.defaultPoolSize=16</pre>
+  </div>
+</div>
+
+</div>
+
+<script>
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = '#334155';
+Chart.defaults.font.family = 'Inter, -apple-system, system-ui, sans-serif';
+
+// Phase comparison chart
+new Chart(document.getElementById('phaseChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Baseline', 'Phase 1', 'Phase 2'],
+    datasets: [
+      { label: 'req/s', data: [190, 642, 709], backgroundColor: '#38bdf8', borderRadius: 6 },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, grid: { color: '#1e293b' } } }
+  }
+});
+
+// Stream latency distribution (Redis-backed)
+new Chart(document.getElementById('streamLatencyChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Min', 'Median', 'P90', 'P95', 'P99', 'Max'],
+    datasets: [{
+      label: 'Latency (ms)',
+      data: [33, 77, 109, 113, 119, 206],
+      backgroundColor: ['#4ade80', '#38bdf8', '#38bdf8', '#fbbf24', '#f87171', '#f87171'],
+      borderRadius: 6
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, title: { display: true, text: 'ms' }, grid: { color: '#1e293b' } } }
+  }
+});
+
+// Scenario comparison (Redis-backed)
+new Chart(document.getElementById('scenarioChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Non-stream', 'Stream', 'Mixed (70/30)'],
+    datasets: [
+      { label: 'req/s', data: [305, 254, 289], backgroundColor: '#38bdf8', borderRadius: 6, yAxisID: 'y' },
+      { label: 'Median (ms)', data: [64, 77, 68], backgroundColor: '#4ade80', borderRadius: 6, yAxisID: 'y1' },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } } },
+    scales: {
+      y: { beginAtZero: true, position: 'left', title: { display: true, text: 'req/s' }, grid: { color: '#1e293b' } },
+      y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'ms' }, grid: { drawOnChartArea: false } }
+    }
+  }
+});
+
+// Timeline chart — stream throughput over time
+const timelineData = [
+  { ts: '04-29 11:40', tps: 2, label: 'Broken' },
+  { ts: '04-29 16:23', tps: 241, label: 'Initial fix' },
+  { ts: '04-29 19:10', tps: 565, label: 'Tuning' },
+  { ts: '04-29 19:18', tps: 776, label: 'Peak (Redis)' },
+  { ts: '05-13 12:06', tps: 194, label: 'Regression' },
+  { ts: '05-13 13:09', tps: 241, label: '' },
+  { ts: '05-21 22:23', tps: 134, label: 'Pre-opt' },
+  { ts: '05-21 23:13', tps: 298, label: '' },
+  { ts: '05-21 23:42', tps: 463, label: '' },
+  { ts: '05-22 12:35', tps: 190, label: 'Baseline' },
+  { ts: '05-22 12:41', tps: 149, label: '' },
+  { ts: '05-22 12:55', tps: 178, label: 'JMeter final' },
+];
+
+new Chart(document.getElementById('timelineChart'), {
+  type: 'line',
+  data: {
+    labels: timelineData.map(d => d.ts),
+    datasets: [{
+      label: 'Stream req/s',
+      data: timelineData.map(d => d.tps),
+      borderColor: '#38bdf8',
+      backgroundColor: 'rgba(56,189,248,0.1)',
+      fill: true,
+      tension: 0.3,
+      pointRadius: timelineData.map(d => d.label ? 6 : 3),
+      pointBackgroundColor: timelineData.map(d => {
+        if (d.label === 'Broken') return '#f87171';
+        if (d.label === 'Peak (Redis)') return '#4ade80';
+        if (d.label === 'Baseline') return '#fbbf24';
+        return '#38bdf8';
+      }),
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          afterLabel: (ctx) => timelineData[ctx.dataIndex].label || ''
+        }
+      }
+    },
+    scales: {
+      y: { beginAtZero: true, title: { display: true, text: 'req/s' }, grid: { color: '#1e293b' } },
+      x: { grid: { color: '#1e293b' } }
+    }
+  }
+});
+</script>
+</body>
+</html>

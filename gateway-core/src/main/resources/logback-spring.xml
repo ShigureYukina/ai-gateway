@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="CONSOLE_TEXT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{24} [rid=%X{requestId:-}] %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+    </appender>
+
+    <springProfile name="dev,test">
+        <logger name="io.gateway.oss" level="INFO"/>
+        <logger name="org.springframework.web" level="WARN"/>
+        <logger name="org.springframework.web.reactive" level="WARN"/>
+        <logger name="reactor.netty" level="WARN"/>
+        <logger name="io.netty" level="WARN"/>
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="org.hibernate.SQL" level="WARN"/>
+        <logger name="org.hibernate.type.descriptor.sql" level="WARN"/>
+        <logger name="org.springframework.jdbc.core" level="WARN"/>
+        <logger name="org.apache.hc" level="WARN"/>
+        <logger name="org.apache.http" level="WARN"/>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_TEXT"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="!dev &amp; !test">
+        <logger name="io.gateway.oss" level="INFO"/>
+        <logger name="org.springframework.web" level="WARN"/>
+        <logger name="org.springframework.web.reactive" level="WARN"/>
+        <logger name="reactor.netty" level="WARN"/>
+        <logger name="io.netty" level="WARN"/>
+        <logger name="org.hibernate" level="WARN"/>
+        <logger name="org.hibernate.SQL" level="WARN"/>
+        <logger name="org.hibernate.type.descriptor.sql" level="WARN"/>
+        <logger name="org.springframework.jdbc.core" level="WARN"/>
+        <logger name="org.apache.hc" level="WARN"/>
+        <logger name="org.apache.http" level="WARN"/>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE_JSON"/>
+        </root>
+    </springProfile>
+</configuration>

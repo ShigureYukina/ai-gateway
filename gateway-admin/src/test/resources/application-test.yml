@@ -1,0 +1,68 @@
+spring:
+  main:
+    web-application-type: reactive
+  autoconfigure:
+    exclude: []
+  data:
+    redis:
+      host: ${GATEWAY_REDIS_HOST:127.0.0.1}
+      port: ${GATEWAY_REDIS_PORT:6379}
+      password: ${GATEWAY_REDIS_PASSWORD:123456}
+      timeout: 5s
+      connect-timeout: 3s
+  datasource:
+    url: jdbc:postgresql://${GATEWAY_PG_HOST:127.0.0.1}:${GATEWAY_PG_PORT:5433}/${GATEWAY_PG_DATABASE:llm_gateway}
+    username: ${GATEWAY_PG_USERNAME:llm_user}
+    password: ${GATEWAY_PG_PASSWORD:llm_password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 6
+    validate-on-migrate: false
+
+gateway:
+  shared-state:
+    backend: in_memory
+  auth:
+    header-name: X-API-Key
+    jwt:
+      secret: test-secret-key-for-unit-tests-32chars
+    clients:
+      - key: client-basic-key
+        enabled: true
+        allowed-models: [gpt-4o-mini]
+        rate-limit:
+          requests: 1
+          window: 60s
+      - key: client-pro-key
+        enabled: true
+        allowed-models: [gpt-4o-mini, gpt-4o-mini-timeout, gpt-4o-mini-provider-error]
+        rate-limit:
+          requests: 20
+          window: 60s
+
+  routing:
+    models:
+      gpt-4o-mini:
+        provider: openai-mock
+        upstream-model: gpt-4o-mini
+      gpt-4o-mini-timeout:
+        provider: openai-mock
+        upstream-model: timeout-model
+      gpt-4o-mini-provider-error:
+        provider: openai-mock
+        upstream-model: provider-error-model
+
+  providers:
+    openai-mock:
+      base-url: http://localhost:18089
+      api-key: test-upstream-key
+      timeout: 500ms

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Exclude mutable internal representation warnings globally (common in Spring/Java patterns) -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2,EI_EXPOSE_STATIC_REP2"/>
+    </Match>
+    <!-- Allow System.out in benchmark scripts -->
+    <Match>
+        <Class name="~.*Benchmark.*"/>
+        <Bug pattern="NP_ALWAYS_TRUE"/>
+    </Match>
+</FindBugsFilter>

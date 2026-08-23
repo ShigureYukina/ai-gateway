@@ -1,0 +1,171 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: simple-ai-gateway
+  autoconfigure:
+    exclude: []
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+  # datasource/jpa 由 profile 配置（local 用 H2，test-pg 用 PostgreSQL）
+  codec:
+    max-in-memory-size: 1MB  # 请求体最大大小
+
+# ============================================================
+# Simple AI Gateway 基础配置（base config）
+#
+# 本文件是所有环境的基础配置，fat JAR 部署时加载。
+# application-local.yml 在激活 local profile 时叠加（推荐本地开发）。
+# 环境变量和命令行参数可覆盖任何项。
+#
+# 配置优先级（从高到低）：
+#   1. 命令行参数: --gateway.shared-state.backend=hybrid
+#   2. 环境变量:   GATEWAY_JWT_SECRET=...
+#   3. application-{profile}.yml（如 application-local.yml）
+#   4. 本文件默认值
+# ============================================================
+gateway:
+
+  # ---- 安全 ----
+  security:
+    block-internal-urls: false   # 生产建议设为 true，阻止外网访问内部端点
+
+  # ---- 存储后端 ----
+  shared-state:
+    # 可选: in_memory | redis | postgresql | hybrid
+    # hybrid 模式：限流/TPM 走 Redis，用量/成本/配置走 PG
+    backend: hybrid
+
+  # ---- 认证 ----
+  auth:
+    enabled: true                         # 启用认证。设为 false 则完全开放
+    registration-mode: restricted        # 默认收紧为 restricted，公开注册按模板下发用户初始能力
+    jwt:
+      # JWT 签名密钥，必须覆盖；本地开发见 application-local.yml
+      secret: ${GATEWAY_JWT_SECRET}
+      access-expiration: 30m              # 访问令牌有效期
+      refresh-expiration: 24h             # 刷新令牌有效期
+    registration:
+      allowed-models:
+        - gpt-4o-mini
+      allowed-scenes:
+        - default-chat
+      defaults:
+        scene: default-chat
+        temperature: 0.7
+        max-tokens: 256
+      capabilities:
+        streaming: true
+      limits:
+        max-tokens: 512
+        daily-tokens: 10000
+        monthly-tokens: 300000
+        tokens-per-minute: 10000
+        daily-cost: 5.0
+        monthly-cost: 100.0
+    users:
+      # 静态用户配置。仅用于兼容/本地联调，不要作为正式环境默认管理员口径
+      admin:
+        password: ${GATEWAY_ADMIN_PASSWORD}           # 必须覆盖；本地开发见 application-local.yml
+        client-id: demo-client-key                    # 此用户关联的客户端
+        role: admin
+      user:
+        password: ${GATEWAY_USER_PASSWORD}            # 必须覆盖；本地开发见 application-local.yml
+        client-id: demo-client-key
+        role: user
+
+  # ---- 上游供应商（示例） ----
+  # 本地开发使用 application-local.yml 中的 localhost 配置；
+  # 生产请通过环境变量或命令行覆盖各 provider 的 base-url / api-key。
+  providers:
+    openai:
+      type: openai-compatible
+      base-url: https://api.openai.com/v1   # 生产环境 URL；本地开发由 application-local.yml 覆盖
+      api-key: ${UPSTREAM_OPENAI_KEY}       # 生产必须设置
+      timeout: 30s
+    anthropic:
+      type: anthropic
+      base-url: https://api.anthropic.com
+      api-key: ${UPSTREAM_ANTHROPIC_KEY}
+      timeout: 30s
+
+  # ---- 模型路由 ----
+  routes:
+    gpt-4o-mini:
+      scene: default-chat
+    openai-primary:
+      provider: openai
+      upstream-model: gpt-4o-mini
+    openai-fallback:
+      provider: openai
+      upstream-model: gpt-4o-mini
+
+  # ---- 场景编排 ----
+  scenes:
+    default-chat:
+      primary-route: openai-primary
+      fallback-routes:
+        - openai-fallback
+
+  # ---- 客户端（API 消费方） ----
+  clients:
+    demo-client-key:
+      enabled: true
+      allowed-models:
+        - gpt-4o-mini
+      allowed-scenes:
+        - default-chat
+      defaults:
+        scene: default-chat
+        temperature: 0.7
+        max-tokens: 256
+      capabilities:
+        streaming: true
+      limits:
+        max-tokens: 4096
+        requests-per-window: 1000          # 生产友好默认值；本地开发由 application-local.yml 放宽
+        window: 1m
+
+  # ---- 系统级限流 ----
+  limit:
+    requests-per-window: 1000              # 生产友好默认值
+    window: 1m
+  # ---- 并发限制 ----
+  concurrent-limit:
+    enabled: true                          # 生产建议开启
+    max-per-client: 10
+    max-global: 200
+
+  # ---- 链路追踪 ----
+  tracing:
+    enabled: true
+    max-body-size: 16384
+
+  # ---- 容错策略 ----
+  resilience:
+    max-attempts: 2
+    retryable-failure-threshold: 2
+    failure-window: 30s
+    open-duration: 30s
+
+  # ---- 负载均衡 ----
+  load-balancer:
+    enabled: false
+
+  # ---- BatchFlusher 异步写入线程池（运行时改源码才生效） ----
+  batch-flusher:
+    # 高 QPS 下 CRITICAL 任务大量退化为同步 PG 写入时，适当调大此值
+    thread-pool-size: 16
+    # 队列积压超过此深度时 BEST_EFFORT 丢弃、CRITICAL 退化为同步执行
+    max-queue-depth: 10000
+
+  # ---- 运维开关 ----
+  operational:
+    maintenance-mode: false
+    emergency-rate-limit:
+      enabled: true                        # 生产建议开启
+      max-requests-per-minute: 60

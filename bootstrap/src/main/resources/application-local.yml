@@ -1,0 +1,100 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    # H2 内存库，mvn 开箱即用，无需安装数据库
+    url: jdbc:h2:mem:gateway;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+# 明文密码兼容（用于本地开发，@Value 读取根路径）
+security:
+  password:
+    allow-plaintext: true
+
+gateway:
+  shared-state:
+    backend: in_memory
+
+  # ---- 本地开发：localstack / mock 上游 ----
+  providers:
+    openai:
+      base-url: http://localhost:18080
+      api-key: sk-test
+      timeout: 120s
+    anthropic:
+      base-url: http://localhost:18081
+      api-key: mock-anthropic-key
+      timeout: 10s
+    qwen:
+      type: openai-compatible
+      base-url: https://your-qwen-endpoint.example.com
+      api-key: ""
+      timeout: 30s
+
+  # ---- 本地开发：放宽路由和客户端限制 ----
+  routes:
+    claude-3-5-sonnet-20241022:
+      provider: anthropic
+      upstream-model: claude-3-5-sonnet-20241022
+      enabled: true
+    qwen-3-6:
+      provider: qwen
+      upstream-model: fc-qwen3.6-plus
+      enabled: true
+  scenes:
+    anthropic-chat:
+      primary-route: claude-3-5-sonnet-20241022
+    qwen-chat:
+      primary-route: qwen-3-6
+  clients:
+    demo-client-key:
+      allowed-models:
+        - gpt-4o-mini
+        - claude-3-5-sonnet-20241022
+        - qwen-3-6
+      allowed-scenes:
+        - default-chat
+        - anthropic-chat
+        - qwen-chat
+      model-scenes:
+        claude-3-5-sonnet-20241022: anthropic-chat
+        qwen-3-6: qwen-chat
+      limits:
+        requests-per-window: 100000
+  limit:
+    requests-per-window: 100000
+  concurrent-limit:
+    enabled: false
+  operational:
+    emergency-rate-limit:
+      enabled: false
+
+  # ---- 本地开发：定价（默认 fallback 价格） ----
+  pricing:
+    default:
+      unit-price: 0.005
+    models:
+      gpt-4o-mini:
+        unit-price: 0.005
+
+  # ---- 本地开发：认证凭据默认值 ----
+  auth:
+    jwt:
+      secret: ${GATEWAY_JWT_SECRET:dev-secret-key-at-least-32-chars-long}
+    users:
+      admin:
+        password: ${GATEWAY_ADMIN_PASSWORD:admin123}
+      user:
+        password: ${GATEWAY_USER_PASSWORD:user123}

@@ -1,0 +1,66 @@
+# Production profile — tightened for safety and cost control
+#
+# 设计原则：
+#   1. 安全优先：PII 拦截、并发保护全部开启
+#   2. 成本控制：请求追踪关闭（减少存储开销，按需开启）
+#   3. 弹性增强：重试 3 次、熔断阈值更高（容忍上游抖动）
+
+spring:
+  flyway:
+    validate-on-migrate: true
+
+logging:
+  level:
+    io.gateway.oss: INFO
+    org.springframework.web.reactive: WARN
+    org.hibernate.SQL: WARN
+
+management:
+  tracing:
+    sampling:
+      probability: ${GATEWAY_TRACING_SAMPLE_RATE:0.1}
+
+gateway:
+  # === 生产安全配置 ===
+
+  # 紧急限流：关闭（按需通过 API 开启：PUT /admin/system/operational）
+  operational:
+    maintenance-mode: false
+    emergency-rate-limit:
+      enabled: false
+      max-requests-per-minute: 100000
+
+  # 并发限制：开启（防止单客户端洪泛）
+  concurrent-limit:
+    enabled: true
+    max-per-client: 50
+    max-global: 1000
+
+  # 请求追踪：关闭（按需通过配置开启：gateway.tracing.enabled=true）
+  tracing:
+    enabled: false
+
+  # models.dev 同步：开启（保持模型目录最新）
+  sync:
+    models-dev:
+      enabled: true
+
+  # 限流：生产阈值（可通过环境变量调整）
+  limit:
+    requests-per-window: ${GATEWAY_RATE_LIMIT:1000}
+    window: 1m
+
+  # 熔断：3 次重试、更宽的熔断窗口（容忍上游抖动）
+  resilience:
+    max-attempts: 3
+    retryable-failure-threshold: 3
+    failure-window: 60s
+    open-duration: 60s
+
+  # 认证：JWT 密钥必须从环境变量注入
+  auth:
+    enabled: true
+    jwt:
+      secret: ${GATEWAY_JWT_SECRET}
+      access-expiration: 15m
+      refresh-expiration: 12h

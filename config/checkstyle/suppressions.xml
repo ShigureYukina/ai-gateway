@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+        "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+        "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+    <!-- Suppress LineLength for test files (tests often have long method names and JSON strings) -->
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="LineLength"/>
+    <!-- Suppress MethodLength for test files -->
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="MethodLength"/>
+    <!-- Suppress FileTabCharacter for test resources -->
+    <suppress files="[\\/]src[\\/]test[\\/]resources[\\/]" checks="FileTabCharacter"/>
+
+    <!-- Suppress star imports in test files (common testing patterns) -->
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="AvoidStarImport"/>
+    <!-- Suppress star imports for JPA entity files -->
+    <suppress files="[\\/]entity[\\/]" checks="AvoidStarImport"/>
+
+    <!-- Suppress LineLength for UserAccountService (long HQL/SQL query strings) -->
+    <suppress files="UserAccountService.java" checks="LineLength"/>
+    <!-- Suppress LineLength for PostgresTraceStore (long SQL query strings) -->
+    <suppress files="PostgresTraceStore.java" checks="LineLength"/>
+    <!-- Suppress LineLength for UserProfileController (long annotation strings) -->
+    <suppress files="UserProfileController.java" checks="LineLength"/>
+
+    <!-- Suppress LeftCurly for specific lines with compact lambda/stream patterns -->
+    <suppress files="AdminConfigController.java" checks="LeftCurly"/>
+    <suppress files="ConfigAuditService.java" checks="LeftCurly"/>
+    <suppress files="RequestLogService.java" checks="LeftCurly"/>
+    <suppress files="ProviderHealthService.java" checks="LeftCurly"/>
+    <suppress files="ProviderHealthService.java" checks="VisibilityModifier"/>
+    <!-- GatewayProperties inline class constructor pattern (64 instances) -->
+    <suppress files="GatewayProperties.java" checks="LeftCurly"/>
+    <!-- DynamicConfigService / ChatCompletionsRequest / ChatMessage inline patterns -->
+    <suppress files="DynamicConfigService.java" checks="LeftCurly"/>
+    <suppress files="ChatCompletionsRequest.java" checks="LeftCurly"/>
+    <suppress files="ChatMessage.java" checks="LeftCurly"/>
+    <suppress files="BatchFlusher.java" checks="LeftCurly"/>
+    <suppress files="GeminiChatProviderAdapter.java" checks="LeftCurly"/>
+    <!-- GatewayProperties inline class constructor pattern (64 instances) -->
+    <suppress files="GatewayProperties.java" checks="LeftCurly"/>
+    <!-- ConfigAuditResponses: well-established multi-class file pattern -->
+    <suppress files="ConfigAuditResponses.java" checks="OneTopLevelClassCheck"/>
+    <suppress files="ConfigAuditResponses.java" checks="OuterTypeFilenameCheck"/>
+    <!-- Test integration files using nested config classes -->
+    <suppress files="ChatCompletionsControllerIT.java" checks="OuterTypeFilenameCheck"/>
+    <suppress files="ModelsControllerIT.java" checks="OuterTypeFilenameCheck"/>
+    <!-- Test files: brace style relaxed -->
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="NeedBraces"/>
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="OneStatementPerLine"/>
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="NewlineAtEndOfFile"/>
+    <suppress files="[\\/]src[\\/]test[\\/]" checks="LeftCurly"/>
+</suppressions>
