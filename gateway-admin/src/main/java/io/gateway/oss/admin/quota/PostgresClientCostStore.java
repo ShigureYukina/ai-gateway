@@ -79,7 +79,7 @@ public class PostgresClientCostStore implements ClientCostStore {
 
     @Override
     public BigDecimal currentMonthlyCost(String clientId, Instant now) {
-        String key = RedisStoreUtils.monthKey(clientId, now);
+        String key = RedisStoreUtils.monthBucketKey(clientId, now);
         Long micros = jdbc.query(
             SELECT_COST_SQL,
             rs -> rs.next() ? rs.getLong("cost_micros") : 0L,
@@ -105,7 +105,7 @@ public class PostgresClientCostStore implements ClientCostStore {
         if (cost == null || cost.signum() <= 0) return;
         long deltaMicros = cost.setScale(COST_SCALE, RoundingMode.HALF_UP)
                 .movePointRight(COST_SCALE).longValueExact();
-        String key = RedisStoreUtils.monthKey(clientId, now);
+        String key = RedisStoreUtils.monthBucketKey(clientId, now);
         long start = System.nanoTime();
         jdbc.update(UPSERT_COST_SQL, namespace, clientId, key, deltaMicros, deltaMicros);
         logWriteLatency("costAddMonthly", clientId, start);
@@ -137,7 +137,7 @@ public class PostgresClientCostStore implements ClientCostStore {
     @Override
     public long checkAndRecordMonthly(String clientId, long costMicros, long monthlyBudgetMicros, Instant now) {
         if (costMicros <= 0) {
-            String key = RedisStoreUtils.monthKey(clientId, now);
+            String key = RedisStoreUtils.monthBucketKey(clientId, now);
             Long micros = jdbc.query(
                 SELECT_COST_SQL,
                 rs -> rs.next() ? rs.getLong("cost_micros") : 0L,
@@ -145,7 +145,7 @@ public class PostgresClientCostStore implements ClientCostStore {
             );
             return micros == null ? 0L : micros;
         }
-        String key = RedisStoreUtils.monthKey(clientId, now);
+        String key = RedisStoreUtils.monthBucketKey(clientId, now);
 
         long start = System.nanoTime();
         Long result = jdbc.query(
@@ -164,7 +164,7 @@ public class PostgresClientCostStore implements ClientCostStore {
                                               long monthlyBudgetMicros,
                                               Instant now) {
         String dailyKey = RedisStoreUtils.dayKey(clientId, now);
-        String monthlyKey = RedisStoreUtils.monthKey(clientId, now);
+        String monthlyKey = RedisStoreUtils.monthBucketKey(clientId, now);
         long totalStart = System.nanoTime();
         try {
             return jdbc.execute((Connection connection) -> {

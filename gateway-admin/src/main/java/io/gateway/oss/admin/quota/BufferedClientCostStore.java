@@ -66,7 +66,7 @@ public class BufferedClientCostStore implements ClientCostStore {
 
     @Override
     public BigDecimal currentMonthlyCost(String clientId, Instant now) {
-        String mk = RedisStoreUtils.monthKey(clientId, now);
+        String mk = RedisStoreUtils.monthBucketKey(clientId, now);
         AtomicLong counter = monthlyCostMicros.get(mk);
         if (counter != null) {
             return BigDecimal.valueOf(counter.get()).movePointLeft(COST_SCALE);
@@ -100,7 +100,7 @@ public class BufferedClientCostStore implements ClientCostStore {
             return delegate.checkAndRecordBoth(clientId, 0, dailyBudgetMicros, monthlyBudgetMicros, now);
         }
         String dk = RedisStoreUtils.dayKey(clientId, now);
-        String mk = RedisStoreUtils.monthKey(clientId, now);
+        String mk = RedisStoreUtils.monthBucketKey(clientId, now);
 
         // Seed from PG on first access for this period key.
         Long pgDaily = delegate.currentDailyCost(clientId, now)
@@ -153,7 +153,7 @@ public class BufferedClientCostStore implements ClientCostStore {
             pending, jdbc,
             UPSERT_DAILY_SQL, UPSERT_MONTHLY_SQL,
             rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.dayKey(rec.clientId(), rec.now()), rec.costMicros()},
-            rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.monthKey(rec.clientId(), rec.now()), rec.costMicros()},
+            rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.monthBucketKey(rec.clientId(), rec.now()), rec.costMicros()},
             log, "cost"
         );
     }

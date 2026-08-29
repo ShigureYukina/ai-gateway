@@ -86,6 +86,27 @@ class ClientBudgetServiceTest {
         assertEquals(new BigDecimal("0.010000"), costStore.currentMonthlyCost(principal.clientId(), now));
     }
 
+    @Test
+    void shouldRecordMonthlyCostWhenOnlyMonthlyBudgetConfigured() {
+        InMemoryClientCostStore costStore = new InMemoryClientCostStore();
+        GatewayProperties properties = new GatewayProperties();
+        properties.getPricing().getDefault().setUnitPrice(new BigDecimal("0.0002"));
+
+        // 只配月度成本预算（无日预算）：recordCost 此前在 dailyBudget=MAX 时提前返回，
+        // 月度成本永不入账、月度预算永不拦截。回归口径：月度必须照常入账。
+        ClientConfig config = new ClientConfig();
+        config.getLimits().setMonthlyCost(new BigDecimal("1.0000"));
+        ClientPrincipal principal = new ClientPrincipal("client-monthly-only", config);
+
+        ClientBudgetService budgetService = new ClientBudgetService(costStore, new CostCalculator(properties));
+        Instant now = Instant.parse("2026-09-01T00:30:00Z");
+
+        budgetService.recordCostOnSuccess(principal, request(), route(), 50L, now);
+
+        assertEquals(new BigDecimal("0.010000"), costStore.currentMonthlyCost(principal.clientId(), now));
+        assertEquals(new BigDecimal("0.010000"), costStore.currentDailyCost(principal.clientId(), now));
+    }
+
     private ClientPrincipal principalWithDailyCost(String budget) {
         return principalWithBudgets(budget, null);
     }

@@ -100,16 +100,15 @@ public class ClientBudgetService implements io.gateway.oss.core.contract.BudgetS
 
     private void recordCost(ClientPrincipal principal, BigDecimal cost, Instant now) {
         long dailyBudgetMicros = resolveDailyBudgetMicros(principal);
-        if (dailyBudgetMicros == Long.MAX_VALUE) {
-            costStore.addDailyCost(principal.clientId(), cost, now);
-            return;
-        }
         long monthlyBudgetMicros = resolveMonthlyBudgetMicros(principal);
         long costMicros = cost.setScale(COST_SCALE, RoundingMode.HALF_UP)
                 .movePointRight(COST_SCALE).longValueExact();
         if (costMicros <= 0) {
             return;
         }
+        // 无 daily 预算时 dailyBudgetMicros 为 Long.MAX_VALUE，必须仍走 checkAndRecordBoth：
+        // 该方法是 monthly 成本唯一的入账路径，提前返回会导致只配月度预算的客户端
+        // 月度成本恒为 0、月度预算永不拦截。
         ClientCostStore.CostCheckResult result = costStore.checkAndRecordBoth(
                 principal.clientId(), costMicros, dailyBudgetMicros, monthlyBudgetMicros, now);
         if (result.dailyMicros() < 0) {

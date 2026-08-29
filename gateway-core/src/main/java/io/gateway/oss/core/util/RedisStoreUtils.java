@@ -49,6 +49,19 @@ public final class RedisStoreUtils {
     }
 
     /**
+     * Builds a month-level period key WITHOUT a day component:
+     * {@code clientId + ":" + yyyy-MM} in UTC.
+     * <p>PG 的 client_usage/client_cost 单表用同一 period_key 列承载 daily/monthly
+     * 两类行；若沿用含 "-01" 后缀的 {@link #monthKey}，每月 1 日会与 {@link #dayKey}
+     * 产出相同字符串，造成行冲突（CTE 21000 / 双倍入账）。因此 PG 路径的月度键
+     * 必须使用本方法的无日分量格式。</p>
+     */
+    public static String monthBucketKey(String clientId, Instant now) {
+        java.time.YearMonth month = java.time.YearMonth.from(now.atZone(ZoneOffset.UTC));
+        return clientId + ":" + month;
+    }
+
+    /**
      * Computes the Duration from {@code now} until the next UTC midnight.
      * Returns at least 1 second if the computed duration is zero or negative.
      */

@@ -216,7 +216,7 @@ class PostgresClientCostStoreTest {
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> periodCaptor = ArgumentCaptor.forClass(String.class);
         String dailyKey = "client-1:2026-05-22";
-        String monthlyKey = "client-1:2026-05-01";
+        String monthlyKey = "client-1:2026-05";
 
         when(connection.prepareStatement(argThat(sql -> sql != null
                 && sql.contains("SELECT period_key, cost_micros FROM client_cost WHERE")

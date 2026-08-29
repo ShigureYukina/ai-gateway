@@ -72,7 +72,7 @@ public class BufferedClientUsageStore implements ClientUsageStore {
 
     @Override
     public long currentMonthlyUsage(String clientId, Instant now) {
-        String mk = RedisStoreUtils.monthKey(clientId, now);
+        String mk = RedisStoreUtils.monthBucketKey(clientId, now);
         AtomicLong counter = monthlyUsage.get(mk);
         return counter != null ? counter.get() : delegate.currentMonthlyUsage(clientId, now);
     }
@@ -113,7 +113,7 @@ public class BufferedClientUsageStore implements ClientUsageStore {
             return delegate.checkAndRecordBoth(clientId, 0, dailyQuota, monthlyQuota, now);
         }
         String dk = RedisStoreUtils.dayKey(clientId, now);
-        String mk = RedisStoreUtils.monthKey(clientId, now);
+        String mk = RedisStoreUtils.monthBucketKey(clientId, now);
 
         // Seed from PG on first access for this period key.
         AtomicLong daily = dailyUsage.computeIfAbsent(dk, k -> new AtomicLong(delegate.currentDailyUsage(clientId, now)));
@@ -169,7 +169,7 @@ public class BufferedClientUsageStore implements ClientUsageStore {
             pending, jdbc,
             UPSERT_DAILY_SQL, UPSERT_MONTHLY_SQL,
             rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.dayKey(rec.clientId(), rec.now()), rec.tokens(), rec.tokens()},
-            rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.monthKey(rec.clientId(), rec.now()), rec.tokens()},
+            rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.monthBucketKey(rec.clientId(), rec.now()), rec.tokens()},
             log, "usage"
         );
     }
