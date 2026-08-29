@@ -213,6 +213,8 @@ Simple AI Gateway 是一个活跃的个人开源项目。核心网关能力—�
 
 当前 GitHub CI 会在 `main` 的 push / pull request 上额外执行：后端模块单测 + 集成测试、前端 `lint` + `test` + `build`、Maven `checkstyle:check`、`./scripts/regression.sh`、`./scripts/verify-supplement.sh`、`./scripts/user-journey-blackbox.sh`。
 
+> **Redis 前置说明：** 运行 `./scripts/verify.sh` / `user-journey-blackbox.sh` 前，确保本机 `localhost:6379` 有 Redis 在运行——网关健康检查聚合包含 Redis 指示器，`[01] 健康检查返回 UP` 断言依赖其为 UP（无 Redis 时其余功能测试仍可通过，但健康断言会假红）。
+
 详细验证矩阵见 [docs/quality-manual.md](docs/quality-manual.md) → 最小必要验证矩阵。
 
 ## 技术栈
