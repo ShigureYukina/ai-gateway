@@ -14,6 +14,8 @@
 - **D4 聚合批量整批失败**：`PostgresAggregateMetricStore.recordAll` 先按 (dimensionType,dimensionKey,bucket) 聚合（LinkedHashMap + 局部 record 累加）再拼 multi-row INSERT，语句内冲突目标唯一。回归用例：`recordAll_aggregatesDuplicateDimensionKeysBeforeBatchUpsert`（3 记录 → 4 行、requests/tokens/costMicros 合并断言）
 - 同步既有测试桩月度键为新格式（usage/cost 各 1 处）；顺带修正 CONTEXT.md 中已不存在的 `stress-test.sh` 条目（实际已合并进 `stress-test-backends.sh`）
 - 验证：compile ✓、checkstyle 双模块 ✓、聚焦测试 77/77 ✓、verify.sh 36/36 ✓、verify-gaps 69/69 ✓
+- **压测追加发现并修复基线缺陷（评审 D3 的真实形态）**：搭起本机 PG+JMeter 压测环境后首轮压测 101,823 次 usage flush 全部失败、client_usage 落库 0 行——① `BufferedClientUsageStore` 的 UPSERT_DAILY_SQL 4 占位符 vs builder 5 参数（基线即错配），PG 模式 usage 缓冲写从未成功过；② 两个缓冲存储 batchUpdate 同键重复行触发 PG 21000（D4 同型）。修复：flushBatch 按冲突键聚合（mergeKeyFn/mergeFn）+ usage daily SQL 参数化 request_cnt + pendingSize 回减；复跑压测 flush 失败 0 次、usage 落库 159 万 tokens、cost 正确停在 $1000 预算下方、成功请求 2149→6792、零 500
+- 本机压测环境（跨 session 有效）：PostgreSQL 16.9 便携版 `~/tools/pgsql`（数据目录 `E:\pgdata`、端口 5433、角色 llm_user/库 llm_gateway，trust 认证）+ JMeter 5.6.3 `~/tools/apache-jmeter-5.6.3`（`~/bin/jmeter`、`~/bin/redis-cli` 垫片已在 PATH）；压测唯一红项为无 lsof 环境断言（24/25）
 
 ### 最新完成（2026-08-29 — 第二轮全量代码审查）
 
