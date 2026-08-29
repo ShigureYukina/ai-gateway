@@ -59,6 +59,7 @@ Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加
 
 ### 测试
 - **第二轮全量代码审查已完成（2026-08-29，4 个并行专项 + 人工复核）**：P0=0、P1=11、P2=15、P3≈20，高严重度集中在 **PG 计费正确性**（period_key 每月 1 日碰撞/月度成本不入账/flush 丢账/聚合批量整批失败/删除竞态复活）、**事件循环阻塞**（5 处，含每请求热路径的路由韧性回写）、**多节点账户缓存失效缺失**、**自助 key 模型白名单绕过** 四个区域。完整报告与修复排期见 `docs/reviews/2026-08-29-second-review.md`；干净区域（namespace/JWT/权限边界/SQL 参数化/本轮 H4 与 auth 改造）已明确核查记录
+- **审查修复第 1 批已完成（2026-08-29）**：D1 PG 月度 period_key 改为无日分量格式 `clientId:yyyy-MM`（新增 `RedisStoreUtils.monthBucketKey`，仅 PG/Buffered 路径使用，Redis/InMemory 键格式不变；注意：切换当月 PG 月度计数从零重计，此前 8 月 1 日碰撞数据本已无法干净拆分）、D2 `recordCost` 去掉 daily=MAX 短路（月度成本恢复入账）、D4 聚合批量 INSERT 前按 (type,key,bucket) 聚合。新增 3 个回归用例，聚焦测试 77/77 ✓、verify.sh 36/36 ✓、verify-gaps 69/69 ✓、checkstyle ✓。第 2 批（flush 回灌/白名单交集/缓存失效）待启动
 - 已完成 1 轮静态性能专项审查（性能 / JVM / 数据库 / Spring / 压测评估 + 总控汇总），结论与当前 Phase K/L 主线一致：主瓶颈仍集中在 `/v1/chat/completions` 成功路径后的 **PostgreSQL 写入链路** 与 **BatchFlusher 过载回退放大**，优先级高于继续做局部 SQL 微调
 - 本轮静态审查新增的 P0 结论：应优先收敛 success path 上的 trace / request log / aggregate metric / usage-cost 高频写放大，减少每次 completions 触发的 PG round-trip；同时将 `BatchFlusher` 中“影响业务正确性”的任务与“仅影响观测完整性”的任务分舱，避免观测类任务在队列积压时同步回退到请求线程
 - 本轮静态审查新增的 P1 结论：后台统计/看板接口存在明显按 client 循环读取（N+1）风险，重点位于 `gateway-admin` 的 usage summary / dashboard 读取路径；此外 JVM/线程池/连接池边界仍缺统一容量模型，当前不应先盲目调大 Hikari 或 BatchFlusher 线程数
@@ -152,7 +153,7 @@ Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加
 | `scripts/verify-regression-patterns.sh` | 纯后端历史问题回归模板脚本（空校验/局部更新/状态码/热更新/版本接口） |
 | `scripts/verify-gaps.sh` | 黑盒覆盖缺口补充（71 测试点） |
 | `scripts/regression-backends.sh` | PG+Redis 回归测试（37 断言点） |
-| `scripts/stress-test.sh` | 并发压力测试 in-memory（JMeter 5 场景） |
+| `scripts/stress-test-backends.sh` | 并发压力测试（PG+Redis，HYBRID，唯一保留压测入口；原 `stress-test.sh` 已合并移除） |
 | `scripts/stress-test-backends.sh` | 并发压力测试 PG+Redis |
 | `jmeter/mock_openai_server_node.mjs` | OpenAI 兼容 mock 上游 |
 | `jmeter/mock_error_server_node.mjs` | 错误模拟服务（500，fallback 测试用） |

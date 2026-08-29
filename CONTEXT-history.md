@@ -7,6 +7,14 @@
 
 ## 最近完成（2026-06-03 ~ 2026-06-09）
 
+### 最新完成（2026-08-29 — 审查修复第 1 批：PG 计费正确性三连修）
+
+- **D1 period_key 每月 1 日碰撞**：新增 `RedisStoreUtils.monthBucketKey`（`clientId:yyyy-MM`，无日分量），`PostgresClientUsageStore/CostStore` 与 `BufferedClientUsageStore/CostStore` 的月度读写/播种/flush 全部切换；Redis/InMemory 键格式不变（分 map/前缀天然区分，且避免月中重置）。**切换当月 PG 月度计数从零重计**（8 月 1 日碰撞数据本已无法干净拆分，不做数据迁移）。回归用例：`checkAndRecordBoth_usesDistinctDailyAndMonthlyPeriodKeysOnFirstOfMonth`（2026-09-01 场景断言 daily/monthly 键互异）
+- **D2 月度成本不入账**：`ClientBudgetService.recordCost` 去掉 `dailyBudget=MAX` 时的 `addDailyCost` 短路，统一走 `checkAndRecordBoth`（monthly 唯一入账路径）；`recordUsage` 核实无同型问题。回归用例：`shouldRecordMonthlyCostWhenOnlyMonthlyBudgetConfigured`
+- **D4 聚合批量整批失败**：`PostgresAggregateMetricStore.recordAll` 先按 (dimensionType,dimensionKey,bucket) 聚合（LinkedHashMap + 局部 record 累加）再拼 multi-row INSERT，语句内冲突目标唯一。回归用例：`recordAll_aggregatesDuplicateDimensionKeysBeforeBatchUpsert`（3 记录 → 4 行、requests/tokens/costMicros 合并断言）
+- 同步既有测试桩月度键为新格式（usage/cost 各 1 处）；顺带修正 CONTEXT.md 中已不存在的 `stress-test.sh` 条目（实际已合并进 `stress-test-backends.sh`）
+- 验证：compile ✓、checkstyle 双模块 ✓、聚焦测试 77/77 ✓、verify.sh 36/36 ✓、verify-gaps 69/69 ✓
+
 ### 最新完成（2026-08-29 — 第二轮全量代码审查）
 
 - **4 个并行专项审查 + 人工复核**：本轮改动深审（0 P1 / 2 P2）、并发与响应式（5 P1 / 5 P2）、安全（2 P1 / 7 P2）、数据与存储一致性（5 P1 / 6 P2 / 10 P3）。全部 P1 经人工核对代码证据确认属实（含 2 处抽查并发 P1、3 处安全证据核验）
