@@ -80,7 +80,9 @@ USER3_ROTATED_API_KEY=""
 
 PROVIDER_NAME="journey-mock"
 ROUTE_NAME="gpt-4o-mini"
-CHAT_PAYLOAD='{"model":"'"$ROUTE_NAME"'","messages":[{"role":"user","content":"请回复 journey-ok"}],"stream":false}'
+# content 中的中文必须用 JSON \u 转义：Windows 下 bash 向原生 curl 传参会把非 ASCII
+# 参数按本地代码页转码，导致服务端 JSON 解码失败（400）。请求体保持纯 ASCII，服务端解码后为“请回复 journey-ok”。
+CHAT_PAYLOAD='{"model":"'"$ROUTE_NAME"'","messages":[{"role":"user","content":"\u8bf7\u56de\u590d journey-ok"}],"stream":false}'
 
 show_help() {
     cat <<'EOF'
