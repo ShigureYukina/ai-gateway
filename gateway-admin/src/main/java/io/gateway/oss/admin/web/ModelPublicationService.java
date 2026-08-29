@@ -12,17 +12,25 @@ import io.gateway.oss.core.contract.PricingPublicationConfigView;
 import io.gateway.oss.core.contract.ProviderConfigView;
 import io.gateway.oss.core.contract.RouteConfigView;
 import io.gateway.oss.core.contract.SceneConfigView;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.function.Supplier;
 
 @Service
 public class ModelPublicationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ModelPublicationService.class);
 
     private final PricingPublicationConfigView gatewayConfigView;
     private final ModelPublicationConfigWriter modelPublicationConfigWriter;
@@ -78,24 +86,120 @@ public class ModelPublicationService {
         aliasRoute.setScene(sceneId);
         aliasRoute.setEnabled(true);
 
+        // 发布是多步写操作且没有跨 store 事务：每个前向步骤成功后登记补偿动作，
+        // 任一步骤失败时按完成逆序回滚已完成的步骤，避免留下半发布态。
+        // 内存快照必须在装配期同步读取（mutator 的写入发生在订阅时）。
+        Deque<Supplier<Mono<Void>>> compensations = new ConcurrentLinkedDeque<>();
+        RouteConfigView previousPrimaryRoute = gatewayConfigView.getRoutes().get(primaryRouteId);
+        SceneConfigView previousScene = gatewayConfigView.getScenes().get(sceneId);
+        RouteConfigView previousAliasRoute = gatewayConfigView.getRoutes().get(normalizedAlias);
+        PricingConfigView previousPricing = gatewayConfigView.getPricing();
+
         PricingConfig updatedPricing = mergeExactMatch(gatewayConfigView.getPricing(), normalizedAlias, upstreamModel);
         Mono<Void> flow = modelPublicationConfigWriter.saveRoute(primaryRouteId, primaryRoute)
+                .doOnSuccess(v -> compensations.addLast(
+                        () -> restoreRoute(primaryRouteId, previousPrimaryRoute)))
                 .then(modelPublicationConfigWriter.saveScene(sceneId, sceneConfig))
-                .then(modelPublicationConfigWriter.saveRoute(normalizedAlias, aliasRoute));
+                .doOnSuccess(v -> compensations.addLast(
+                        () -> restoreScene(sceneId, previousScene)))
+                .then(modelPublicationConfigWriter.saveRoute(normalizedAlias, aliasRoute))
+                .doOnSuccess(v -> compensations.addLast(
+                        () -> restoreRoute(normalizedAlias, previousAliasRoute)));
 
         if (updatedPricing != null) {
-            flow = flow.then(modelPublicationConfigWriter.saveSystemPricing(updatedPricing));
+            flow = flow.then(modelPublicationConfigWriter.saveSystemPricing(updatedPricing))
+                    .doOnSuccess(v -> {
+                        if (previousPricing != null) {
+                            compensations.addLast(() ->
+                                    modelPublicationConfigWriter.saveSystemPricing(copyOf(previousPricing)));
+                        }
+                    });
         }
         for (String obsoleteRouteId : existingPublication.obsoleteRouteIds(primaryRouteId)) {
-            flow = flow.then(modelPublicationConfigWriter.deleteRoute(obsoleteRouteId));
+            RouteConfigView previousObsoleteRoute = gatewayConfigView.getRoutes().get(obsoleteRouteId);
+            flow = flow.then(modelPublicationConfigWriter.deleteRoute(obsoleteRouteId))
+                    .doOnSuccess(v -> {
+                        if (previousObsoleteRoute != null) {
+                            compensations.addLast(() -> restoreRoute(obsoleteRouteId, previousObsoleteRoute));
+                        }
+                    });
         }
         if (existingPublication.shouldDeleteScene(sceneId)) {
-            flow = flow.then(modelPublicationConfigWriter.deleteScene(existingPublication.sceneId()));
+            String obsoleteSceneId = existingPublication.sceneId();
+            SceneConfigView previousObsoleteScene = gatewayConfigView.getScenes().get(obsoleteSceneId);
+            flow = flow.then(modelPublicationConfigWriter.deleteScene(obsoleteSceneId))
+                    .doOnSuccess(v -> {
+                        if (previousObsoleteScene != null) {
+                            compensations.addLast(() -> restoreScene(obsoleteSceneId, previousObsoleteScene));
+                        }
+                    });
         }
 
         return flow
+                .onErrorResume(forwardError -> rollBack(compensations)
+                        .then(Mono.error(forwardError)))
                 .then(Mono.fromSupplier(() -> new PublishOutcome(created,
                         buildResponse(normalizedAlias, provider, upstreamModel))));
+    }
+
+    private Mono<Void> rollBack(Deque<Supplier<Mono<Void>>> compensations) {
+        if (compensations.isEmpty()) {
+            return Mono.empty();
+        }
+        log.warn("Model publication failed, rolling back {} completed step(s)", compensations.size());
+        Mono<Void> flow = Mono.empty();
+        Supplier<Mono<Void>> compensation;
+        while ((compensation = compensations.pollLast()) != null) {
+            flow = flow.then(Mono.defer(compensation))
+                    .onErrorResume(rollbackError -> {
+                        log.warn("Publication rollback step failed, continuing with remaining steps", rollbackError);
+                        return Mono.empty();
+                    });
+        }
+        return flow;
+    }
+
+    private Mono<Void> restoreRoute(String routeId, RouteConfigView previous) {
+        return previous == null
+                ? modelPublicationConfigWriter.deleteRoute(routeId)
+                : modelPublicationConfigWriter.saveRoute(routeId, copyOf(previous));
+    }
+
+    private Mono<Void> restoreScene(String sceneId, SceneConfigView previous) {
+        return previous == null
+                ? modelPublicationConfigWriter.deleteScene(sceneId)
+                : modelPublicationConfigWriter.saveScene(sceneId, copyOf(previous));
+    }
+
+    private RouteConfig copyOf(RouteConfigView view) {
+        RouteConfig copy = new RouteConfig();
+        copy.setProvider(view.getProvider());
+        copy.setUpstreamModel(view.getUpstreamModel());
+        copy.setUpstreamModels(view.getUpstreamModels() == null
+                ? new ArrayList<>() : new ArrayList<>(view.getUpstreamModels()));
+        copy.setScene(view.getScene());
+        copy.setStrategy(view.getStrategy());
+        copy.setFallbackRoutes(view.getFallbackRoutes() == null
+                ? new ArrayList<>() : new ArrayList<>(view.getFallbackRoutes()));
+        copy.setWeight(view.getWeight());
+        copy.setEnabled(view.isEnabled());
+        return copy;
+    }
+
+    private SceneConfig copyOf(SceneConfigView view) {
+        SceneConfig copy = new SceneConfig();
+        copy.setPrimaryRoute(view.getPrimaryRoute());
+        copy.setFallbackRoutes(view.getFallbackRoutes() == null
+                ? new ArrayList<>() : new ArrayList<>(view.getFallbackRoutes()));
+        return copy;
+    }
+
+    private PricingConfig copyOf(PricingConfigView view) {
+        PricingConfig copy = new PricingConfig();
+        copy.setDefault(view.getDefault());
+        copy.setModels(view.getModels() == null ? new HashMap<>() : new HashMap<>(view.getModels()));
+        copy.setExactMatches(view.getExactMatches() == null ? new HashMap<>() : new HashMap<>(view.getExactMatches()));
+        return copy;
     }
 
     private PublicationResponse buildResponse(String alias, String provider, String upstreamModel) {
