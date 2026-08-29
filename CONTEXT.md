@@ -55,7 +55,7 @@ Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加
 - **Phase M（回归与压测基线固化）已完成**。复验分层策略已定义（见 CONTEXT-plan.md），性能基线已固化：HYBRID mixed-model stress 最优轮 234.3 req/s / p50 72ms / p99 259ms
 - **Phase M 瓶颈诊断闭环**：通过 JFR 全量采样 + in-JVM echo 替代 Node.js mock（`EchoDiagnosticServer`，`@Profile("stress-test")`，独立端口 18089）完成瓶颈定位。结论文档：mock 上游非瓶颈，瓶颈为单机 CPU 天花板（机器利用率 94-98%，无单方法 >2%）。gateway 内部流水线分布均匀，无微观瓶颈。生产分离部署 PG/Redis 后吞吐应远超当前 360 req/s；同 JVM echo 模式因 CPU 争用反而降低吞吐（echo 仅用于排除上游变量，非优化手段）；约 360 req/s 上限为单机硬件饱和（gateway + PG + Redis + JMeter 共宿主）。
 - **新增诊断工具**：`EchoDiagnosticServer.java`（bootstrap 模块，React Netty 独立端口 echo server）+ `stress-test-backends.sh --with-echo` 参数，用于压测时消除上游 mock 变量；脚本新增预热轮（warm-up pass before measurement），JFR profiling 输出至 `build/stress-profile.jfr`。
-- **工作区存在进行中的性能优化 WIP**：`BufferedClientUsageStore` / `BufferedClientCostStore` 内存写缓冲封装、`PostgresClientTpmStore` RETURNING SQL 合并、`ChatCompletionsOrchestrator` 调度分离 Phase 1/2、`AggregateReportingService` O(1) 计数 + `@Scheduled` 兜底 flush
+- **性能优化 WIP 状态核实（2026-08-29）**：`BufferedClientUsageStore` / `BufferedClientCostStore` 内存写缓冲、`PostgresClientTpmStore` RETURNING SQL 合并、`ChatCompletionsOrchestrator` 调度分离、`AggregateReportingService` O(1) 计数 + `@Scheduled` 兜底 flush 均已随 Phase K/L 完成并纳入基线提交，**无未落盘 WIP**
 
 ### 测试
 - 已完成 1 轮静态性能专项审查（性能 / JVM / 数据库 / Spring / 压测评估 + 总控汇总），结论与当前 Phase K/L 主线一致：主瓶颈仍集中在 `/v1/chat/completions` 成功路径后的 **PostgreSQL 写入链路** 与 **BatchFlusher 过载回退放大**，优先级高于继续做局部 SQL 微调
@@ -92,7 +92,7 @@ Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加
   - `scripts/lib.sh`：新增 `wait_for_url()` 工具函数；`scripts/verify.sh` 已改用 `wait_for_url()` 代替裸 `sleep` 轮询，提升冒烟鲁棒性。
 
   **发布前补充**
-  - `scripts/user-journey-blackbox.sh`：7 条无 Docker 真实用户旅程，按最终用户/管理员操作链路验证，支持 `in_memory` / `postgresql(+redis,+flyway)` 双后端路径。关键断言已升级为结果正确性校验（chat 响应体、usage 聚合值、管理员重置密码闭环等）。实跑 in_memory 125/125 ✅，PG 128/128 ✅。
+  - `scripts/user-journey-blackbox.sh`：7 条无 Docker 真实用户旅程，按最终用户/管理员操作链路验证，支持 `in_memory` / `postgresql(+redis,+flyway)` 双后端路径。关键断言已升级为结果正确性校验（chat 响应体、usage 聚合值、管理员重置密码闭环等）。实跑：in_memory 最新 **126/127** ✅（2026-08-29，Windows 本机，唯一失败为无 lsof 环境断言；历史 Linux 环境 125/125），PG 128/128 ✅（历史记录）。
 
   **按需专项**（改动对应能力时补跑，不纳入默认门禁）
   - `scripts/regression.sh`：主回归，覆盖认证/Provider/Route/Client/User 管理/chat/key 生命周期/限流配额预算/request log/usage/cost/dashboard 等核心串联路径
