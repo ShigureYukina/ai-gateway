@@ -58,6 +58,7 @@ Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加
 - **性能优化 WIP 状态核实（2026-08-29）**：`BufferedClientUsageStore` / `BufferedClientCostStore` 内存写缓冲、`PostgresClientTpmStore` RETURNING SQL 合并、`ChatCompletionsOrchestrator` 调度分离、`AggregateReportingService` O(1) 计数 + `@Scheduled` 兜底 flush 均已随 Phase K/L 完成并纳入基线提交，**无未落盘 WIP**
 
 ### 测试
+- **第二轮全量代码审查已完成（2026-08-29，4 个并行专项 + 人工复核）**：P0=0、P1=11、P2=15、P3≈20，高严重度集中在 **PG 计费正确性**（period_key 每月 1 日碰撞/月度成本不入账/flush 丢账/聚合批量整批失败/删除竞态复活）、**事件循环阻塞**（5 处，含每请求热路径的路由韧性回写）、**多节点账户缓存失效缺失**、**自助 key 模型白名单绕过** 四个区域。完整报告与修复排期见 `docs/reviews/2026-08-29-second-review.md`；干净区域（namespace/JWT/权限边界/SQL 参数化/本轮 H4 与 auth 改造）已明确核查记录
 - 已完成 1 轮静态性能专项审查（性能 / JVM / 数据库 / Spring / 压测评估 + 总控汇总），结论与当前 Phase K/L 主线一致：主瓶颈仍集中在 `/v1/chat/completions` 成功路径后的 **PostgreSQL 写入链路** 与 **BatchFlusher 过载回退放大**，优先级高于继续做局部 SQL 微调
 - 本轮静态审查新增的 P0 结论：应优先收敛 success path 上的 trace / request log / aggregate metric / usage-cost 高频写放大，减少每次 completions 触发的 PG round-trip；同时将 `BatchFlusher` 中“影响业务正确性”的任务与“仅影响观测完整性”的任务分舱，避免观测类任务在队列积压时同步回退到请求线程
 - 本轮静态审查新增的 P1 结论：后台统计/看板接口存在明显按 client 循环读取（N+1）风险，重点位于 `gateway-admin` 的 usage summary / dashboard 读取路径；此外 JVM/线程池/连接池边界仍缺统一容量模型，当前不应先盲目调大 Hikari 或 BatchFlusher 线程数
