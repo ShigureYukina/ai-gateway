@@ -149,12 +149,15 @@ public class BufferedClientCostStore implements ClientCostStore {
     }
 
     void flushPending() {
-        BufferedStoreHelper.flushBatch(
+        int drained = BufferedStoreHelper.flushBatch(
             pending, jdbc,
             UPSERT_DAILY_SQL, UPSERT_MONTHLY_SQL,
             rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.dayKey(rec.clientId(), rec.now()), rec.costMicros()},
             rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.monthBucketKey(rec.clientId(), rec.now()), rec.costMicros()},
+            rec -> rec.clientId() + ":" + RedisStoreUtils.dayKey(rec.clientId(), rec.now()),
+            (a, b) -> new CostRecord(a.clientId(), a.costMicros() + b.costMicros(), a.now()),
             log, "cost"
         );
+        pendingSize.addAndGet(-drained);
     }
 }

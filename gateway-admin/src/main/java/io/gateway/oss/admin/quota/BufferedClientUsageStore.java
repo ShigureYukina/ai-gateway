@@ -34,10 +34,10 @@ public class BufferedClientUsageStore implements ClientUsageStore {
     private static final int FLUSH_BATCH_SIZE = 100;
     private static final String UPSERT_DAILY_SQL =
             "INSERT INTO client_usage (namespace, client_id, period_key, tokens, request_cnt) " +
-            "VALUES (?, ?, ?, ?, 1) " +
+            "VALUES (?, ?, ?, ?, ?) " +
             "ON CONFLICT (namespace, client_id, period_key) DO UPDATE SET " +
             "  tokens = client_usage.tokens + EXCLUDED.tokens, " +
-            "  request_cnt = client_usage.request_cnt + 1";
+            "  request_cnt = client_usage.request_cnt + EXCLUDED.request_cnt";
     private static final String UPSERT_MONTHLY_SQL =
             "INSERT INTO client_usage (namespace, client_id, period_key, tokens) VALUES (?, ?, ?, ?) " +
             "ON CONFLICT (namespace, client_id, period_key) DO UPDATE SET " +
@@ -55,7 +55,7 @@ public class BufferedClientUsageStore implements ClientUsageStore {
     private final ConcurrentLinkedQueue<UsageRecord> pending = new ConcurrentLinkedQueue<>();
     private final AtomicInteger pendingSize = new AtomicInteger();
 
-    private record UsageRecord(String clientId, long tokens, Instant now) {}
+    private record UsageRecord(String clientId, long tokens, int requestCount, Instant now) {}
 
     public BufferedClientUsageStore(JdbcTemplate jdbc, ClientUsageStore delegate, String namespace) {
         this.jdbc = jdbc;
@@ -136,7 +136,7 @@ public class BufferedClientUsageStore implements ClientUsageStore {
         }
 
         // Buffer for async flush
-        pending.offer(new UsageRecord(clientId, tokens, now));
+        pending.offer(new UsageRecord(clientId, tokens, 1, now));
         int sz = pendingSize.incrementAndGet();
         if (sz >= FLUSH_BATCH_SIZE) {
             flushPending();
@@ -165,12 +165,15 @@ public class BufferedClientUsageStore implements ClientUsageStore {
     }
 
     void flushPending() {
-        BufferedStoreHelper.flushBatch(
+        int drained = BufferedStoreHelper.flushBatch(
             pending, jdbc,
             UPSERT_DAILY_SQL, UPSERT_MONTHLY_SQL,
-            rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.dayKey(rec.clientId(), rec.now()), rec.tokens(), rec.tokens()},
+            rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.dayKey(rec.clientId(), rec.now()), rec.tokens(), rec.requestCount()},
             rec -> new Object[]{namespace, rec.clientId(), RedisStoreUtils.monthBucketKey(rec.clientId(), rec.now()), rec.tokens()},
+            rec -> rec.clientId() + ":" + RedisStoreUtils.dayKey(rec.clientId(), rec.now()),
+            (a, b) -> new UsageRecord(a.clientId(), a.tokens() + b.tokens(), a.requestCount() + b.requestCount(), a.now()),
             log, "usage"
         );
+        pendingSize.addAndGet(-drained);
     }
 }
