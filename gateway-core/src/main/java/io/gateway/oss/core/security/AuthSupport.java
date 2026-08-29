@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -56,37 +57,49 @@ public class AuthSupport {
 
     /**
      * 解析并校验 access token，保持原有冻结/失效/删除用户语义不变。
+     * <p>缓存未命中时回退持久化存储；该回退必须保持非阻塞，
+     * 因为本方法在 WebFlux 事件循环线程上执行，禁止 block()。</p>
      */
-    public Claims parseAccessClaims(ServerWebExchange exchange) {
-        String authorization = exchange.getRequest().getHeaders().getFirst("Authorization");
-        if (authorization == null || !authorization.startsWith("Bearer ")) {
-            throw new GatewayException(HttpStatus.UNAUTHORIZED, "unauthorized", "Missing or invalid Authorization header");
-        }
-        String token = authorization.substring("Bearer ".length()).trim();
-        Claims claims = jwtService.parseToken(token);
-        if (jwtService.isRefreshToken(claims)) {
-            throw new GatewayException(HttpStatus.UNAUTHORIZED, "unauthorized", "Refresh token cannot be used for this endpoint");
-        }
-        if (properties.getAuth().isEnabled()) {
+    public Mono<Claims> parseAccessClaims(ServerWebExchange exchange) {
+        return Mono.defer(() -> {
+            String authorization = exchange.getRequest().getHeaders().getFirst("Authorization");
+            if (authorization == null || !authorization.startsWith("Bearer ")) {
+                throw new GatewayException(HttpStatus.UNAUTHORIZED, "unauthorized", "Missing or invalid Authorization header");
+            }
+            String token = authorization.substring("Bearer ".length()).trim();
+            Claims claims = jwtService.parseToken(token);
+            if (jwtService.isRefreshToken(claims)) {
+                throw new GatewayException(HttpStatus.UNAUTHORIZED, "unauthorized", "Refresh token cannot be used for this endpoint");
+            }
+            if (!properties.getAuth().isEnabled()) {
+                return Mono.just(claims);
+            }
             String username = jwtService.extractUsername(claims);
             int tokenVersion = jwtService.extractTokenVersion(claims);
             UserAccount account = userAccountService.findByUsernameSync(username);
-            if (account == null && !userAccountService.isDeletedUserWithOldToken(username, tokenVersion)) {
-                // Cache miss — fall back to persistent store
-                account = userAccountService.findByUsername(username).block();
-            }
             if (account != null) {
-                if (account.frozen()) {
-                    throw new GatewayException(HttpStatus.FORBIDDEN, "account_frozen", "Account is frozen");
-                }
-                if (account.tokenVersion() != tokenVersion) {
-                    throw new GatewayException(HttpStatus.UNAUTHORIZED, "unauthorized", "Token has been invalidated");
-                }
-            } else if (userAccountService.isDeletedUserWithOldToken(username, tokenVersion)) {
+                validateActiveAccount(account, tokenVersion);
+                return Mono.just(claims);
+            }
+            if (userAccountService.isDeletedUserWithOldToken(username, tokenVersion)) {
                 throw new GatewayException(HttpStatus.UNAUTHORIZED, "unauthorized", "Account has been deleted");
             }
+            return userAccountService.findByUsername(username)
+                    .map(storeAccount -> {
+                        validateActiveAccount(storeAccount, tokenVersion);
+                        return claims;
+                    })
+                    .defaultIfEmpty(claims);
+        });
+    }
+
+    private void validateActiveAccount(UserAccount account, int tokenVersion) {
+        if (account.frozen()) {
+            throw new GatewayException(HttpStatus.FORBIDDEN, "account_frozen", "Account is frozen");
         }
-        return claims;
+        if (account.tokenVersion() != tokenVersion) {
+            throw new GatewayException(HttpStatus.UNAUTHORIZED, "unauthorized", "Token has been invalidated");
+        }
     }
 
     public TokenIdentity resolveIdentity(Claims claims) {

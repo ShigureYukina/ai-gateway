@@ -1,7 +1,6 @@
 package io.gateway.oss.core.security;
 
 import io.gateway.oss.core.config.GatewayProperties;
-import io.jsonwebtoken.Claims;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -41,31 +40,35 @@ public class UserKeyController {
     public Mono<ResponseEntity<CreateKeyResponse>> createKey(@Valid @RequestBody CreateKeyRequest request,
                                                              ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = authSupport.parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
-        return userAccountService.ensureUserAccount(identity.username(), identity.role())
-                .flatMap(account -> userAccountService.createApiKey(account.username(), request.name(), request.allowedModels()))
-                .map(key -> ResponseEntity.ok(new CreateKeyResponse(
-                        key.keyId(),
-                        key.name(),
-                        key.apiKey(),
-                        UserAccountCodec.maskApiKey(key.apiKey()),
-                        key.enabled(),
-                        key.createdAt(),
-                        key.allowedModels()
-                )));
+        return authSupport.parseAccessClaims(exchange)
+                .flatMap(claims -> {
+                    AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
+                    return userAccountService.ensureUserAccount(identity.username(), identity.role())
+                            .flatMap(account -> userAccountService.createApiKey(account.username(), request.name(), request.allowedModels()))
+                            .map(key -> ResponseEntity.ok(new CreateKeyResponse(
+                                    key.keyId(),
+                                    key.name(),
+                                    key.apiKey(),
+                                    UserAccountCodec.maskApiKey(key.apiKey()),
+                                    key.enabled(),
+                                    key.createdAt(),
+                                    key.allowedModels()
+                            )));
+                });
     }
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<KeysResponse>> listKeys(ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = authSupport.parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
-        return userAccountService.ensureUserAccount(identity.username(), identity.role())
-                .flatMap(account -> userAccountService.listApiKeys(account.username()))
-                .map(keys -> ResponseEntity.ok(new KeysResponse(
-                        keys.stream().map(k -> new KeyItem(k.keyId(), k.name(), k.apiKeyMasked(), k.enabled(), k.createdAt(), k.lastUsedAt(), k.requestCount(), k.allowedModels())).toList()
-                )));
+        return authSupport.parseAccessClaims(exchange)
+                .flatMap(claims -> {
+                    AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
+                    return userAccountService.ensureUserAccount(identity.username(), identity.role())
+                            .flatMap(account -> userAccountService.listApiKeys(account.username()))
+                            .map(keys -> ResponseEntity.ok(new KeysResponse(
+                                    keys.stream().map(k -> new KeyItem(k.keyId(), k.name(), k.apiKeyMasked(), k.enabled(), k.createdAt(), k.lastUsedAt(), k.requestCount(), k.allowedModels())).toList()
+                            )));
+                });
     }
 
     @PatchMapping(value = "/{keyId}", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -73,40 +76,46 @@ public class UserKeyController {
                                                @Valid @RequestBody PatchKeyRequest request,
                                                ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = authSupport.parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
-        return userAccountService.ensureUserAccount(identity.username(), identity.role())
-                .flatMap(account -> userAccountService.updateApiKey(account.username(), keyId, request.enabled(), request.name(), request.allowedModels()))
-                .thenReturn(ResponseEntity.noContent().build());
+        return authSupport.parseAccessClaims(exchange)
+                .flatMap(claims -> {
+                    AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
+                    return userAccountService.ensureUserAccount(identity.username(), identity.role())
+                            .flatMap(account -> userAccountService.updateApiKey(account.username(), keyId, request.enabled(), request.name(), request.allowedModels()))
+                            .thenReturn(ResponseEntity.noContent().build());
+                });
     }
 
     @DeleteMapping("/{keyId}")
     public Mono<ResponseEntity<Void>> deleteKey(@PathVariable String keyId, ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = authSupport.parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
-        return userAccountService.ensureUserAccount(identity.username(), identity.role())
-                .flatMap(account -> userAccountService.deleteApiKey(account.username(), keyId))
-                .thenReturn(ResponseEntity.noContent().build());
+        return authSupport.parseAccessClaims(exchange)
+                .flatMap(claims -> {
+                    AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
+                    return userAccountService.ensureUserAccount(identity.username(), identity.role())
+                            .flatMap(account -> userAccountService.deleteApiKey(account.username(), keyId))
+                            .thenReturn(ResponseEntity.noContent().build());
+                });
     }
 
     @PostMapping(value = "/{keyId}/rotate", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<RotateKeyResponse>> rotateKey(@PathVariable String keyId,
                                                              ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = authSupport.parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
-        return userAccountService.ensureUserAccount(identity.username(), identity.role())
-                .flatMap(account -> userAccountService.rotateApiKey(account.username(), keyId))
-                .map(key -> ResponseEntity.ok(new RotateKeyResponse(
-                        key.keyId(),
-                        key.name(),
-                        key.apiKey(),
-                        UserAccountCodec.maskApiKey(key.apiKey()),
-                        key.enabled(),
-                        key.createdAt(),
-                        key.allowedModels()
-                )));
+        return authSupport.parseAccessClaims(exchange)
+                .flatMap(claims -> {
+                    AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
+                    return userAccountService.ensureUserAccount(identity.username(), identity.role())
+                            .flatMap(account -> userAccountService.rotateApiKey(account.username(), keyId))
+                            .map(key -> ResponseEntity.ok(new RotateKeyResponse(
+                                    key.keyId(),
+                                    key.name(),
+                                    key.apiKey(),
+                                    UserAccountCodec.maskApiKey(key.apiKey()),
+                                    key.enabled(),
+                                    key.createdAt(),
+                                    key.allowedModels()
+                            )));
+                });
     }
 
     private void requireAuthEnabled() {

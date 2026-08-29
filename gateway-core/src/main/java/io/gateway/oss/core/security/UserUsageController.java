@@ -3,7 +3,6 @@ package io.gateway.oss.core.security;
 import io.gateway.oss.core.config.GatewayProperties;
 import io.gateway.oss.core.error.GatewayException;
 import io.gateway.oss.core.observability.RequestLogService;
-import io.jsonwebtoken.Claims;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -55,17 +54,19 @@ public class UserUsageController {
             @RequestParam(name = "status", required = false) Integer status,
             ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = authSupport.parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
-        int clampedLimit = Math.max(1, Math.min(200, limit));
-        List<RequestLogService.RequestLogEntry> entries = requestLogService.getByClient(identity.clientId(), clampedLimit);
-        entries = entries.stream()
-                .filter(e -> model == null || model.isBlank() || model.equals(e.model()))
-                .filter(e -> status == null || e.status() == status)
-                .toList();
-        return Mono.just(ResponseEntity.ok(new UsageRecentResponse(
-                Instant.now(),
-                entries.stream().map(this::toUsageView).toList())));
+        return authSupport.parseAccessClaims(exchange)
+                .map(claims -> {
+                    AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
+                    int clampedLimit = Math.max(1, Math.min(200, limit));
+                    List<RequestLogService.RequestLogEntry> entries = requestLogService.getByClient(identity.clientId(), clampedLimit);
+                    entries = entries.stream()
+                            .filter(e -> model == null || model.isBlank() || model.equals(e.model()))
+                            .filter(e -> status == null || e.status() == status)
+                            .toList();
+                    return ResponseEntity.ok(new UsageRecentResponse(
+                            Instant.now(),
+                            entries.stream().map(this::toUsageView).toList()));
+                });
     }
 
     private UsageRequestEntry toUsageView(RequestLogService.RequestLogEntry entry) {
@@ -95,36 +96,38 @@ public class UserUsageController {
             @RequestParam(name = "to", required = false) String to,
             ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = authSupport.parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
+        return authSupport.parseAccessClaims(exchange)
+                .map(claims -> {
+                    AuthSupport.TokenIdentity identity = authSupport.resolveIdentity(claims);
 
-        LocalDate fromDate = parseDateParam(from, "from");
-        LocalDate toDate = parseDateParam(to, "to");
-        Instant fromInstant = fromDate.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant toInstant = toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+                    LocalDate fromDate = parseDateParam(from, "from");
+                    LocalDate toDate = parseDateParam(to, "to");
+                    Instant fromInstant = fromDate.atStartOfDay(ZoneOffset.UTC).toInstant();
+                    Instant toInstant = toDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 
-        List<RequestLogService.RequestLogEntry> entries = requestLogService.getByClientFiltered(
-                identity.clientId(), fromInstant, toInstant, 10000);
+                    List<RequestLogService.RequestLogEntry> entries = requestLogService.getByClientFiltered(
+                            identity.clientId(), fromInstant, toInstant, 10000);
 
-        Map<String, ModelCostEntry> modelMap = new LinkedHashMap<>();
-        for (RequestLogService.RequestLogEntry e : entries) {
-            ModelCostEntry existing = modelMap.computeIfAbsent(e.model(), k -> new ModelCostEntry(k, 0, 0L, 0L, 0L, 0.0));
-            modelMap.put(e.model(), new ModelCostEntry(
-                    existing.model(),
-                    existing.requests() + 1,
-                    existing.totalTokens() + (e.usageTokens() != null ? e.usageTokens() : 0L),
-                    existing.promptTokens() + (e.promptTokens() != null ? e.promptTokens() : 0L),
-                    existing.completionTokens() + (e.completionTokens() != null ? e.completionTokens() : 0L),
-                    existing.totalCostUsd() + (e.costUsd() != null ? e.costUsd() : 0.0)
-            ));
-        }
+                    Map<String, ModelCostEntry> modelMap = new LinkedHashMap<>();
+                    for (RequestLogService.RequestLogEntry e : entries) {
+                        ModelCostEntry existing = modelMap.computeIfAbsent(e.model(), k -> new ModelCostEntry(k, 0, 0L, 0L, 0L, 0.0));
+                        modelMap.put(e.model(), new ModelCostEntry(
+                                existing.model(),
+                                existing.requests() + 1,
+                                existing.totalTokens() + (e.usageTokens() != null ? e.usageTokens() : 0L),
+                                existing.promptTokens() + (e.promptTokens() != null ? e.promptTokens() : 0L),
+                                existing.completionTokens() + (e.completionTokens() != null ? e.completionTokens() : 0L),
+                                existing.totalCostUsd() + (e.costUsd() != null ? e.costUsd() : 0.0)
+                        ));
+                    }
 
-        return Mono.just(ResponseEntity.ok(new ModelCostDistributionResponse(
-                identity.clientId(),
-                fromDate.toString(),
-                toDate.toString(),
-                new ArrayList<>(modelMap.values())
-        )));
+                    return ResponseEntity.ok(new ModelCostDistributionResponse(
+                            identity.clientId(),
+                            fromDate.toString(),
+                            toDate.toString(),
+                            new ArrayList<>(modelMap.values())
+                    ));
+                });
     }
 
     private LocalDate parseDateParam(String value, String paramName) {
