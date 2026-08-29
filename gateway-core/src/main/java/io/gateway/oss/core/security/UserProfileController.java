@@ -65,61 +65,67 @@ public class UserProfileController {
     @GetMapping(value = "/me", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<MeResponse>> me(ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = resolveIdentity(claims);
-        return userAccountService.findByUsername(identity.username())
-                .map(account -> new MeResponse(
-                        account.username(),
-                        account.role(),
-                        account.displayName(),
-                        account.email(),
-                        UserAccountCodec.maskApiKey(account.apiKey()),
-                        account.createdAt(),
-                        buildQuota(identity, account)))
-                .switchIfEmpty(Mono.fromCallable(() -> new MeResponse(
-                        identity.username(),
-                        identity.role(),
-                        null,
-                        null,
-                        null,
-                        0L,
-                        buildQuota(identity, null))))
-                .map(ResponseEntity::ok);
+        return parseAccessClaims(exchange)
+                .flatMap(claims -> {
+                    AuthSupport.TokenIdentity identity = resolveIdentity(claims);
+                    return userAccountService.findByUsername(identity.username())
+                            .map(account -> new MeResponse(
+                                    account.username(),
+                                    account.role(),
+                                    account.displayName(),
+                                    account.email(),
+                                    UserAccountCodec.maskApiKey(account.apiKey()),
+                                    account.createdAt(),
+                                    buildQuota(identity, account)))
+                            .switchIfEmpty(Mono.fromCallable(() -> new MeResponse(
+                                    identity.username(),
+                                    identity.role(),
+                                    null,
+                                    null,
+                                    null,
+                                    0L,
+                                    buildQuota(identity, null))))
+                            .map(ResponseEntity::ok);
+                });
     }
 
     @PutMapping("/profile")
     public Mono<ResponseEntity<MeResponse>> updateProfile(@Valid @RequestBody UpdateProfileRequest request,
                                                           ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = resolveIdentity(claims);
-        // 仅动态账户支持资料落库，静态 YAML 用户保持兼容返回。
-        return userAccountService.updateProfile(identity.username(), request.displayName(), request.email())
-                .map(account -> new MeResponse(
-                        account.username(),
-                        account.role(),
-                        account.displayName(),
-                        account.email(),
-                        UserAccountCodec.maskApiKey(account.apiKey()),
-                        account.createdAt(),
-                        buildQuota(identity, account)))
-                .map(ResponseEntity::ok);
+        return parseAccessClaims(exchange)
+                .flatMap(claims -> {
+                    AuthSupport.TokenIdentity identity = resolveIdentity(claims);
+                    // 仅动态账户支持资料落库，静态 YAML 用户保持兼容返回。
+                    return userAccountService.updateProfile(identity.username(), request.displayName(), request.email())
+                            .map(account -> new MeResponse(
+                                    account.username(),
+                                    account.role(),
+                                    account.displayName(),
+                                    account.email(),
+                                    UserAccountCodec.maskApiKey(account.apiKey()),
+                                    account.createdAt(),
+                                    buildQuota(identity, account)))
+                            .map(ResponseEntity::ok);
+                });
     }
 
     @PutMapping("/password")
     public Mono<ResponseEntity<Void>> changePassword(@Valid @RequestBody ChangePasswordRequest request,
                                                      ServerWebExchange exchange) {
         requireAuthEnabled();
-        Claims claims = parseAccessClaims(exchange);
-        AuthSupport.TokenIdentity identity = resolveIdentity(claims);
-        if (request.newPassword() == null || request.newPassword().length() < 6) {
-            throw new io.gateway.oss.core.error.GatewayException(HttpStatus.BAD_REQUEST, "invalid_password", "New password must be at least 6 characters");
-        }
-        return userAccountService.changePassword(identity.username(), request.oldPassword(), request.newPassword())
-                .thenReturn(ResponseEntity.noContent().build());
+        return parseAccessClaims(exchange)
+                .flatMap(claims -> {
+                    AuthSupport.TokenIdentity identity = resolveIdentity(claims);
+                    if (request.newPassword() == null || request.newPassword().length() < 6) {
+                        throw new io.gateway.oss.core.error.GatewayException(HttpStatus.BAD_REQUEST, "invalid_password", "New password must be at least 6 characters");
+                    }
+                    return userAccountService.changePassword(identity.username(), request.oldPassword(), request.newPassword())
+                            .thenReturn(ResponseEntity.noContent().build());
+                });
     }
 
-    private Claims parseAccessClaims(ServerWebExchange exchange) {
+    private Mono<Claims> parseAccessClaims(ServerWebExchange exchange) {
         return authSupport.parseAccessClaims(exchange);
     }
 
