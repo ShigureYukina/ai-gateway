@@ -267,7 +267,7 @@ class PostgresClientUsageStoreTest {
                 .thenReturn(selectStatement);
         when(selectStatement.executeQuery()).thenReturn(resultSet);
         when(resultSet.next()).thenReturn(true, true, false);
-        when(resultSet.getString("period_key")).thenReturn("client-1:2026-05-22", "client-1:2026-05-01");
+        when(resultSet.getString("period_key")).thenReturn("client-1:2026-05-22", "client-1:2026-05");
         when(resultSet.getLong("tokens")).thenReturn(12L, 34L);
         when(jdbc.execute(any(ConnectionCallback.class))).thenAnswer(invocation -> {
             ConnectionCallback<?> callback = invocation.getArgument(0);
@@ -280,6 +280,36 @@ class PostgresClientUsageStoreTest {
         assertEquals(34L, result.monthly());
         verify(requestCountStatement).executeUpdate();
         verify(connection, times(2)).prepareStatement(anyString());
+    }
+
+    @Test
+    void checkAndRecordBoth_usesDistinctDailyAndMonthlyPeriodKeysOnFirstOfMonth() throws Exception {
+        // 每月 1 日 dayKey 与含 -01 后缀的旧月度键相同，会令 CTE 两个分支命中同一行
+        // （PG 21000）或缓冲路径双倍入账。回归口径：月度键必须为无日分量格式。
+        PostgresClientUsageStore store = createStore();
+        Connection connection = mock(Connection.class);
+        PreparedStatement combinedStatement = mock(PreparedStatement.class);
+        ResultSet combinedResultSet = mock(ResultSet.class);
+
+        Instant firstOfMonth = Instant.parse("2026-09-01T00:30:00Z");
+
+        when(connection.prepareStatement(anyString())).thenReturn(combinedStatement);
+        when(combinedStatement.executeQuery()).thenReturn(combinedResultSet);
+        when(combinedResultSet.next()).thenReturn(true, true, false);
+        when(combinedResultSet.getString("period")).thenReturn("daily", "monthly");
+        when(combinedResultSet.getLong("tokens")).thenReturn(10L, 10L);
+        when(jdbc.execute(any(ConnectionCallback.class))).thenAnswer(invocation -> {
+            ConnectionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInConnection(connection);
+        });
+
+        store.checkAndRecordBoth("client-1", 10, 100, 200, firstOfMonth);
+
+        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(combinedStatement, atLeastOnce()).setString(anyInt(), keyCaptor.capture());
+        var boundKeys = keyCaptor.getAllValues();
+        assertTrue(boundKeys.contains("client-1:2026-09-01"), "daily period key 应含日期分量: " + boundKeys);
+        assertTrue(boundKeys.contains("client-1:2026-09"), "monthly period key 应为无日分量格式: " + boundKeys);
     }
 
 }

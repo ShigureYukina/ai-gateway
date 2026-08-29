@@ -121,4 +121,51 @@ class PostgresAggregateMetricStoreTest {
         List<AggregateMetricStore.AggregateMetric> result = store.getDaily("provider", LocalDate.of(2026, 5, 22));
         assertTrue(result.isEmpty());
     }
+
+    @Test
+    void recordAll_aggregatesDuplicateDimensionKeysBeforeBatchUpsert() {
+        // 同一批次内多条请求共享维度值（如同 client）时，必须先按 (type,key,bucket)
+        // 聚合：否则多行 INSERT 内同一冲突行出现两次，PG 报 21000 整批失败。
+        PostgresAggregateMetricStore store = createStore();
+        AggregateMetricStore.DimensionRecord same1 =
+                new AggregateMetricStore.DimensionRecord("client", "client-1", "Client One", 1, 100, new BigDecimal("0.010000"));
+        AggregateMetricStore.DimensionRecord same2 =
+                new AggregateMetricStore.DimensionRecord("client", "client-1", "Client One", 2, 50, new BigDecimal("0.005000"));
+        AggregateMetricStore.DimensionRecord other =
+                new AggregateMetricStore.DimensionRecord("client", "client-2", "Client Two", 1, 10, null);
+
+        store.recordAll(List.of(same1, same2, other), Instant.parse("2026-09-01T00:30:00Z"));
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> paramsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc, times(1)).update(sqlCaptor.capture(), paramsCaptor.capture());
+
+        String sql = sqlCaptor.getValue();
+        // 去重后 client-1 + client-2 × day/month 共 4 个冲突目标（修复前为 6 行且含同键重复）
+        assertEquals(4, countValueTuples(sql));
+
+        Object[] params = paramsCaptor.getValue();
+        assertEquals(32, params.length);
+        assertAggregatedRow(params, "client-1", "2026-09-01", 3L, 150L, 15000L);
+        assertAggregatedRow(params, "client-1", "2026-09", 3L, 150L, 15000L);
+        assertAggregatedRow(params, "client-2", "2026-09-01", 1L, 10L, 0L);
+        assertAggregatedRow(params, "client-2", "2026-09", 1L, 10L, 0L);
+    }
+
+    private int countValueTuples(String sql) {
+        return sql.split("\\(\\?, \\?, \\?, \\?, \\?, \\?, \\?, \\?\\)", -1).length - 1;
+    }
+
+    private void assertAggregatedRow(Object[] params, String key, String bucket,
+                                     long requests, long tokens, long costMicros) {
+        for (int i = 0; i + 7 < params.length; i += 8) {
+            if (key.equals(params[i + 2]) && bucket.equals(params[i + 3])) {
+                assertEquals(requests, ((Number) params[i + 4]).longValue(), "requests: " + key + "/" + bucket);
+                assertEquals(tokens, ((Number) params[i + 5]).longValue(), "tokens: " + key + "/" + bucket);
+                assertEquals(costMicros, ((Number) params[i + 6]).longValue(), "costMicros: " + key + "/" + bucket);
+                return;
+            }
+        }
+        fail("row not found: " + key + "/" + bucket);
+    }
 }

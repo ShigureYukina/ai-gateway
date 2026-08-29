@@ -15,6 +15,7 @@ import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -55,23 +56,29 @@ public class PostgresAggregateMetricStore implements AggregateMetricStore {
         String monthBucket = month.toString();
 
         // 所有维度 × day/month 两个 bucket 合并为单次 multi-row INSERT，
-        // 减少 PostgreSQL round-trip，业务语义保持不变。
+        // 减少 PostgreSQL round-trip。同一 flush 批次内多条请求常共享维度值
+        // （如同一 client/model），必须先按冲突键 (type,key,bucket) 聚合：
+        // 同一冲突行在单条语句内出现两次会触发 PG 21000
+        // "ON CONFLICT DO UPDATE command cannot affect row a second time"，整批失败。
+        Map<BucketKey, BucketAccumulator> merged = new LinkedHashMap<>();
+        for (DimensionRecord r : records) {
+            long costMicros = toCostMicros(r.costUsd());
+            mergeRecord(merged, r, dayBucket, costMicros);
+            mergeRecord(merged, r, monthBucket, costMicros);
+        }
+
         StringBuilder sql = new StringBuilder(
                 "INSERT INTO aggregate_metric (namespace, dimension_type, dimension_key, bucket, requests, tokens, cost_micros, display_name) VALUES ");
-        List<Object> params = new ArrayList<>(records.size() * 16);
+        List<Object> params = new ArrayList<>(merged.size() * 8);
 
-        for (int i = 0; i < records.size(); i++) {
-            DimensionRecord r = records.get(i);
-            long costMicros = toCostMicros(r.costUsd());
-            if (i > 0) {
+        boolean first = true;
+        for (Map.Entry<BucketKey, BucketAccumulator> entry : merged.entrySet()) {
+            if (!first) {
                 sql.append(", ");
             }
-            // day bucket
+            first = false;
             sql.append("(?, ?, ?, ?, ?, ?, ?, ?)");
-            addRowParams(params, r, dayBucket, costMicros);
-            // month bucket
-            sql.append(", (?, ?, ?, ?, ?, ?, ?, ?)");
-            addRowParams(params, r, monthBucket, costMicros);
+            addRowParams(params, entry.getKey(), entry.getValue());
         }
 
         sql.append(" ON CONFLICT (namespace, dimension_type, dimension_key, bucket) DO UPDATE SET")
@@ -85,8 +92,44 @@ public class PostgresAggregateMetricStore implements AggregateMetricStore {
         long ms = (System.nanoTime() - start) / 1_000_000;
         recordWriteLatencyMetric("aggregateMetricBatch", ms);
         if (ms > 2) {
-            log.info("pg_write_latency point=aggregateMetricBatch dimensions={} durationMs={}", records.size(), ms);
+            log.info("pg_write_latency point=aggregateMetricBatch records={} rows={} durationMs={}",
+                    records.size(), merged.size(), ms);
         }
+    }
+
+    private void mergeRecord(Map<BucketKey, BucketAccumulator> merged,
+                             DimensionRecord r, String bucket, long costMicros) {
+        merged.merge(
+                new BucketKey(r.dimensionType(), r.dimensionKey(), bucket),
+                new BucketAccumulator(r.requests(), r.tokens(), costMicros, r.displayName()),
+                this::combine);
+    }
+
+    private BucketAccumulator combine(BucketAccumulator a, BucketAccumulator b) {
+        String displayName = (a.displayName() != null && !a.displayName().isBlank())
+                ? a.displayName() : b.displayName();
+        return new BucketAccumulator(
+                a.requests() + b.requests(),
+                a.tokens() + b.tokens(),
+                a.costMicros() + b.costMicros(),
+                displayName);
+    }
+
+    private void addRowParams(List<Object> params, BucketKey key, BucketAccumulator acc) {
+        params.add(namespace);
+        params.add(key.dimensionType());
+        params.add(key.dimensionKey());
+        params.add(key.bucket());
+        params.add(acc.requests());
+        params.add(acc.tokens());
+        params.add(acc.costMicros());
+        params.add(acc.displayName());
+    }
+
+    private record BucketKey(String dimensionType, String dimensionKey, String bucket) {
+    }
+
+    private record BucketAccumulator(long requests, long tokens, long costMicros, String displayName) {
     }
 
     private void recordWriteLatencyMetric(String point, long durationMs) {
@@ -99,17 +142,6 @@ public class PostgresAggregateMetricStore implements AggregateMetricStore {
                     .movePointRight(COST_SCALE).longValueExact();
         }
         return 0L;
-    }
-
-    private void addRowParams(List<Object> params, DimensionRecord r, String bucket, long costMicros) {
-        params.add(namespace);
-        params.add(r.dimensionType());
-        params.add(r.dimensionKey());
-        params.add(bucket);
-        params.add(r.requests());
-        params.add(r.tokens());
-        params.add(costMicros);
-        params.add(r.displayName());
     }
 
     @Override

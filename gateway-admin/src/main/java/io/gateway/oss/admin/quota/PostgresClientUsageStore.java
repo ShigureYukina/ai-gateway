@@ -90,7 +90,7 @@ public class PostgresClientUsageStore implements ClientUsageStore {
 
     @Override
     public long currentMonthlyUsage(String clientId, Instant now) {
-        String key = RedisStoreUtils.monthKey(clientId, now);
+        String key = RedisStoreUtils.monthBucketKey(clientId, now);
         return jdbc.query(
             SELECT_TOKENS_SQL,
             rs -> rs.next() ? rs.getLong("tokens") : 0L,
@@ -110,7 +110,7 @@ public class PostgresClientUsageStore implements ClientUsageStore {
     @Override
     public void addMonthlyUsage(String clientId, long tokens, Instant now) {
         if (tokens <= 0) return;
-        String key = RedisStoreUtils.monthKey(clientId, now);
+        String key = RedisStoreUtils.monthBucketKey(clientId, now);
         long start = System.nanoTime();
         jdbc.update(UPSERT_USAGE_SQL, namespace, clientId, key, tokens, tokens);
         logWriteLatency("usageAddMonthly", clientId, start);
@@ -155,7 +155,7 @@ public class PostgresClientUsageStore implements ClientUsageStore {
     @Override
     public long checkAndRecordMonthly(String clientId, long tokens, long monthlyQuota, Instant now) {
         if (tokens <= 0) return currentMonthlyUsage(clientId, now);
-        String key = RedisStoreUtils.monthKey(clientId, now);
+        String key = RedisStoreUtils.monthBucketKey(clientId, now);
 
         long start = System.nanoTime();
         Long result = jdbc.query(
@@ -170,7 +170,7 @@ public class PostgresClientUsageStore implements ClientUsageStore {
     @Override
     public UsageCheckResult checkAndRecordBoth(String clientId, long tokens, long dailyQuota, long monthlyQuota, Instant now) {
         String dailyKey = RedisStoreUtils.dayKey(clientId, now);
-        String monthlyKey = RedisStoreUtils.monthKey(clientId, now);
+        String monthlyKey = RedisStoreUtils.monthBucketKey(clientId, now);
         long totalStart = System.nanoTime();
         try {
             return jdbc.execute((Connection connection) -> {
