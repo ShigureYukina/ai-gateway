@@ -11,19 +11,19 @@
 
 Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加认证、限流、配额、路由、熔断、观测，附带 React 管理后台。
 
-当前状态：Phase 0-5 前端闭环、代码审查修复 Fix-A~G、ESLint/Checkstyle 接入、代码分数优化 Lane A-E、Phase F~H、Phase I（Provider/Route 纵切）、Phase K（PG 写入链路测量与归因）、Phase L（写入链路最小优化）均已全部完成并验证。**Phase M（回归与压测基线固化）已完成**。R1-R4 风险修复已完成并验证（详见已修复风险摘要）。Phase J（Client 子域纵切）仍为 P2 候选。`quality_signal=6636`，当前主要瓶颈仍为 `modularity=4517`（depth 已改善至 5000）。
+当前状态：Phase 0-5 前端闭环、代码审查修复 Fix-A~G、ESLint/Checkstyle 接入、代码分数优化 Lane A-E、Phase F~H、Phase I（Provider/Route 纵切）、Phase K（PG 写入链路测量与归因）、Phase L（写入链路最小优化）均已全部完成并验证。**Phase M（回归与压测基线固化）已完成**。R1-R4 风险修复已完成并验证；2026-08-29 核实确认 H2/H3/H5 已在代码中修复，**H4（模型发布补偿回滚）已于 2026-08-29 补齐并验证**；同日发现并修复 `parseAccessClaims` 缓存未命中 `block()` 阻塞 bug（详见已知问题）。Phase J（Client 子域纵切）仍为 P2 候选。`quality_signal=6636`，当前主要瓶颈仍为 `modularity=4517`（depth 已改善至 5000）。
 
 | 模块 | 测试数（约） | 状态 |
 |------|--------|------|
 | gateway-core | ~625 | ✅ 全部通过 |
 | gateway-admin | ~626 | ✅ 全部通过 |
 | bootstrap | 6 (SPA fallback) | ✅ 全部通过 |
-| frontend | 102 (19 files) | ✅ Vitest + RTL |
+| frontend | 124 (21 files) | ✅ Vitest + RTL |
 
 | 总览指标 | 数值 |
 |----------|------|
 | 后端测试总数 | ~1250 |
-| 前端测试总数 | 98 |
+| 前端测试总数 | 124 (21 files) |
 | 黑盒回归测试点 | ~260+（含 7 条无 Docker 用户旅程，支持 in_memory / PostgreSQL+Redis 双路径） |
 | sentrux 质量信号 | **6636**（modularity 4517, equality 6394, depth 5000；acyclicity 10000 完美，冗余度 8910） |
 
@@ -73,9 +73,18 @@ Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加
 - CI 已升级为分层门禁：后端模块单测 + 集成测试、前端 lint/test/build、Maven Checkstyle、`scripts/regression.sh`、`scripts/verify-supplement.sh`、`scripts/user-journey-blackbox.sh` 全部纳入 PR / push 到 `main` 的工作流；本地默认门禁仍保持 `compile + frontend lint/test/build`，黑盒与压测按改动范围补跑
 - `application-local.yml` 已显式覆盖 `gateway.shared-state.backend: in_memory`，避免本地 H2 启动误继承 base `hybrid` 模式并走到 `PostgresConfigStore/config_kv` SQL 路径；`local` / `local-file` 现都符合“开箱即用、无外部 PG/Redis 依赖”的定位
 - admin web 装配已确认继续采用 **显式 `@Import`** 而非 `@ComponentScan("io.gateway.oss.admin.web")`：`web` 主包内混有 `AdminConfigImportSupport`、`AdminConfigExportSupport`、`InternalUsageSummaryReadService` 这类非 stereotype 支持类，扫描方案不稳；新增 `bootstrap/src/test/java/io/gateway/oss/bootstrap/AdminRoutesAssemblyTest.java` 作为组装态守卫，验证 `/admin/providers`、`/admin/routes`、`/admin/dashboard/overview` 在 assembled app 中真实可达
+- **parseAccessClaims 非阻塞改造已完成（2026-08-29，修复 verify-gaps 暴露的 P1 缺陷）**：Fix-B 引入的"缓存未命中回退 store"原实现为 `.block()`，而该方法在 WebFlux 事件循环线程上执行——任何缓存未命中（如重启后旧 token 访问自助端点）都会抛 `block() not supported` → `/auth/keys` 等端点 500。现改为 `Mono<Claims>` 组合（`AuthSupport` + `UserKeyController`/`UserProfileController`/`UserUsageController` 共 12 处调用点），冻结/失效/删除语义不变，AuthControllerTest 50/50 通过，verify-gaps 69/69 全绿
 
 
 ### 脚本
+- **本机（Windows Git Bash）黑盒运行环境（2026-08-29 搭建，跨 session 有效）**：
+  - JDK 21：`C:\Users\sweyyuki\jdk-21.0.12.1+1`（Temurin zip 解压；跑 `./mvnw` 前需 `export JAVA_HOME`，机器原无 JDK/Maven）
+  - `.mvn/wrapper/maven-wrapper.properties` 曾缺失，已按 Maven 3.9.9 补回
+  - jq：`~/bin/jq.exe`（已在 PATH）；Redis：便携版 `E:\redis\redis-server.exe`（跑 verify/gaps 前需后台启动 `--port 6379`）
+  - **Redis 可执行路径不能含 `\u` 序列**（如 `C:\Users\...`）：Spring Redis 健康检查把 INFO 的 executable 路径当 Properties 解析，`\u` 后跟非 hex 会报 `Malformed \uxxxx encoding` → 健康聚合 DOWN → verify.sh [01] 假红；`E:\redis` 的 `\r` 是合法转义，无此问题
+  - user-journey-blackbox 的 `[06] lsof 已安装` 断言在本机预期假红（Git Bash 无 lsof），功能不受影响，实际通过口径为 **126/127**
+  - 脚本请求体中的中文已改为 JSON `\u` 转义（CHAT_PAYLOAD）：Windows 下 bash 向原生 curl 传参时非 ASCII 会被按本地代码页转码 → 服务端 JSON 解码 400
+
 - 黑盒脚本职责已收敛为个人项目模式，按使用频率分三层：
 
   **日常门禁**（每次改动必跑）
@@ -119,10 +128,10 @@ Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加
 | R3 | Postgres 无 namespace 隔离 | ✅ Fixed | 多实例共 PG 库时配置/配额互相污染 → route_state / provider_runtime 表加 namespace 列（V14），SQL 全部按 namespace 过滤 |
 | R4 | 删除用户 write-behind 复活 | ✅ Fixed | dirty buffer 定时把已删用户写回 → recordDeletedVersion 在 evictAccount 之前执行，关闭并发复活窗 |
 | H1 | API Key 明文存储 | ✅ Fixed | 动态用户 API Key 已改为确定性摘要 + BCrypt 组合存储，鉴权路径同步兼容升级 |
-| H2 | SSRF IPv6 绕过 | 🟠 High | ULA/link-local 地址可过校验 |
-| H3 | 配置 reload 增量 merge | 🟠 High | 已删配置跨节点残留 |
-| H4 | 模型发布非原子 | 🟠 High | 半发布态导致路由/模型短暂不一致 |
-| H5 | Webhook 无重试 | 🟠 High | retryMax 配置不生效，事件丢失 |
+| H2 | SSRF IPv6 绕过 | ✅ Fixed | 2026-08-29 代码核实：`BaseUrlValidator` 已显式拦截 ULA(fc00::/7)/link-local，provider 保存入口已接入校验 |
+| H3 | 配置 reload 增量 merge | ✅ Fixed | 2026-08-29 代码核实：`ConfigLoadService` 已整表替换，删除经 sync 发布 + 5s 版本对账兜底传播 |
+| H4 | 模型发布非原子 | ✅ Fixed | 2026-08-29 补齐：`ModelPublicationService.publish()` 每步成功登记补偿动作，失败按完成逆序回滚（6 个单测 + verify-gaps 发布场景全过） |
+| H5 | Webhook 无重试 | ✅ Fixed | 2026-08-29 代码核实：`WebhookDispatcherService` 的 `Retry.backoff(retryMax)` 生效，投递结果有 delivery log 留痕 |
 | H6 | 多 Controller 缺 `@Valid` | ✅ Fixed | internal/admin 入口已补方法参数校验与 request body 校验 |
 
 ## 关键文件索引

@@ -7,6 +7,29 @@
 
 ## 最近完成（2026-06-03 ~ 2026-06-09）
 
+### 最新完成（2026-08-29 — H4 发布补偿回滚 + parseAccessClaims 非阻塞改造 + Windows 本机环境补齐）
+
+**1. H4 模型发布补偿回滚（排期第 1 项，唯一确认存留的 High 风险）**
+- `ModelPublicationService.publish()` 原为多步写 Mono 链（primary route → scene → alias route → pricing → 清理 obsolete），中途失败留下半发布态
+- 修复：每个前向步骤成功后登记惰性补偿动作（restore-or-delete，快照在装配期同步读取——mutator 内存写入发生在订阅时），任一步失败按**完成逆序**回滚已完成步骤；补偿单步 best-effort（失败记 warn 继续其余），最后抛原始错误；`deleteScene` 失败时旧数据未被删除，不登记补偿
+- 新增 `ModelPublicationServiceTest` 6 个单测（首个失败无回滚 / scene 失败回滚删 primary / 重发布失败恢复旧 primary+scene / 清理失败全链回滚含 pricing 快照 / 成功路径零回滚 / 无历史 pricing 跳过 undo）；Mockito 视口 `Map<String, ? extends View>` 通配返回用 `doReturn` 打桩
+- 验证：compile ✓、checkstyle（core/admin）✓、verify.sh 36/36 ✓、verify-gaps.sh 69/69 ✓（含模型发布场景）
+
+**2. parseAccessClaims 缓存未命中 `.block()` 缺陷修复（verify-gaps 暴露的新 P1）**
+- 现象：verify-gaps 批次 4（Auth 自助 Key 管理）7/69 失败，`POST /auth/keys` 500，日志 `block()/blockFirst()/blockLast() are blocking, which is not supported in thread reactor-http-nio-*`
+- 根因：Fix-B 的"缓存未命中回退 store"在 `AuthSupport.parseAccessClaims:76` 用 `.block()`，而该方法在事件循环线程上执行，缓存未命中必炸；PATCH/rotate/DELETE 的 404 为空 keyId 的连锁假象
+- 修复：`parseAccessClaims` 改为 `Mono<Claims>`（`Mono.defer` 包同步校验 + store 回退非阻塞组合，冻结/失效/删除语义不变），`UserKeyController`(5)/`UserProfileController`(3)/`UserUsageController`(2) 共 10 个调用点机械 flatMap 化
+- 验证：AuthControllerTest 50/50、UserAccountServiceTest/ClientAuthServiceTest/JwtServiceTest 83 全过；verify-gaps **7 失败 → 69/69 全绿**
+
+**3. user-journey 126/127（本机中文编码修复）**
+- 首跑 55/127：全部 chat 断言失败。根因是 **Windows 环境问题而非代码缺陷**——bash 向原生 curl 传参时把 `CHAT_PAYLOAD` 的中文字面量按本地代码页转码，服务端 JSON 解码 400（ASCII payload 200、中文 payload 400、`--data-binary @utf8文件` 200 三组对照实验确认）
+- 修复：`CHAT_PAYLOAD` 中文改为 JSON `\u8bf7\u56de\u590d` 转义（请求体纯 ASCII，跨平台免疫）；重跑 **126/127**，唯一失败为本机无 lsof 的环境断言（`scripts/lib.sh` 端口清理已优雅降级）
+
+**4. Windows 本机（Git Bash）验证环境补齐（跨 session 有效，详见 CONTEXT.md 脚本节）**
+- 机器原无 JDK/Maven/jq/Redis：装 Temurin 21（`~/jdk-21.0.12.1+1`，`JAVA_HOME` 需 export）、补回 `.mvn/wrapper/maven-wrapper.properties`（Maven 3.9.9）、`~/bin/jq.exe`、便携 Redis `E:\redis`
+- 踩坑记录：Redis 可执行路径含 `\u`（如 `C:\Users\...`）时 Spring 健康检查解析 INFO 报 `Malformed \uxxxx encoding` → 健康聚合 DOWN → verify.sh [01] 假红；放 `E:\redis` 规避
+- 顺手清理基线遗留无用导入：`BufferedStoreHelper`（AtomicInteger）、`RedisTraceStore`（RedisCallback）+ 本轮改造产生的 2 个 Claims 导入；checkstyle 双模块恢复 0 violation
+
 ### 最新完成（2026-06-10 — 前端 catch any 收敛）
 
 - 将 8 个前端页面/组件中的 `catch (e: any)` / `catch (err: any)` 收敛为 `catch (error: unknown)`

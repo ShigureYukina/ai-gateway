@@ -76,6 +76,7 @@ sentrux_check_rules
    - JVM / 线程池 / Hikari 连接池仍缺统一容量模型，当前**不应先盲目调大** Hikari 或 BatchFlusher 并发
    - Redis `KEYS`、`ConfigSyncPublisher` 生命周期、`DirtyAccountFlushBuffer` 非完整 Bean 托管曾属于**次级稳定性风险**；其中 `DirtyAccountFlushBuffer`、`ConfigSyncPublisher` 生命周期与 `RedisTraceStore.resetForTests()` 的 `KEYS` 已完成最小修复，其余同类 Redis `KEYS` 使用仍按需继续收敛
 10. **本轮最小实现已落地**：为 core 新增共享 `boundedElasticScheduler` Bean，并仅把 `/v1/chat/completions` 预热路径与 `RedisConfigStore` / `PostgresConfigStore` 切到统一调度器；同时确认 `InternalUsageSummaryReadService` 已是 batch 聚合实现，当前无新的 N+1 代码需要修复
+11. **2026-08-29 收口**：H4（模型发布补偿回滚）补齐完成；verify-gaps 暴露的 `parseAccessClaims` 缓存未命中 `.block()` 500 缺陷已改造为非阻塞（`AuthSupport` + UserKey/UserProfile/UserUsage 三个自助 Controller，语义不变）；同日补齐 Windows 本机验证链路（JDK 21 / jq / 便携 Redis / journey 中文 `\u` 转义）。当前门禁实测：`compile` ✓、双模块 `checkstyle` ✓、`verify.sh` **36/36**、`verify-gaps.sh` **69/69**、`user-journey` **126/127**（唯一失败为本机无 lsof 的环境断言）
 
 ### 范围边界
 
