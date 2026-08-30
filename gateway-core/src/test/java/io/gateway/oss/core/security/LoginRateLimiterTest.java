@@ -81,4 +81,71 @@ class LoginRateLimiterTest {
         limiter.clear("user1");
         assertDoesNotThrow(() -> limiter.check("user1"));
     }
+
+    // ─── IP 维度（审查 F5：MAX_IP_ATTEMPTS=30，独立于用户名维度）───
+
+    @Test
+    void freshIp_hasNoFailures() {
+        assertDoesNotThrow(() -> limiter.checkIp("203.0.113.5"));
+    }
+
+    @Test
+    void blankOrNullIp_ignored() {
+        assertDoesNotThrow(() -> limiter.checkIp(null));
+        assertDoesNotThrow(() -> limiter.checkIp("  "));
+        assertDoesNotThrow(() -> limiter.recordIpFailure(null));
+        assertDoesNotThrow(() -> limiter.recordIpFailure(""));
+        assertDoesNotThrow(() -> limiter.clearIp(null));
+        // 未记录任何有效 IP，checkIp 不应抛出
+        assertDoesNotThrow(() -> limiter.checkIp("203.0.113.9"));
+    }
+
+    @Test
+    void belowIpThreshold_isAllowed() {
+        for (int i = 0; i < 29; i++) {
+            limiter.recordIpFailure("198.51.100.7");
+        }
+        // 29 次失败，未到 30 次阈值
+        assertDoesNotThrow(() -> limiter.checkIp("198.51.100.7"));
+    }
+
+    @Test
+    void afterMaxIpFailures_isBlocked() {
+        for (int i = 0; i < 30; i++) {
+            limiter.recordIpFailure("198.51.100.8");
+        }
+
+        GatewayException ex = assertThrows(GatewayException.class, () -> limiter.checkIp("198.51.100.8"));
+        assertEquals(429, ex.getStatus().value());
+        assertEquals("login_rate_limited_ip", ex.getCode());
+    }
+
+    @Test
+    void clearIp_resetsCounter() {
+        for (int i = 0; i < 30; i++) {
+            limiter.recordIpFailure("198.51.100.9");
+        }
+        assertThrows(GatewayException.class, () -> limiter.checkIp("198.51.100.9"));
+
+        limiter.clearIp("198.51.100.9");
+        assertDoesNotThrow(() -> limiter.checkIp("198.51.100.9"));
+    }
+
+    @Test
+    void ipAndUsernameDimensions_trackedIndependently() {
+        // 用户名维度拉满不应影响 IP 维度
+        for (int i = 0; i < 10; i++) {
+            limiter.recordFailure("dave");
+        }
+        assertThrows(GatewayException.class, () -> limiter.check("dave"));
+        assertDoesNotThrow(() -> limiter.checkIp("203.0.113.10"));
+
+        // IP 维度拉满不应影响用户名维度
+        for (int i = 0; i < 30; i++) {
+            limiter.recordIpFailure("203.0.113.11");
+        }
+        assertThrows(GatewayException.class, () -> limiter.checkIp("203.0.113.11"));
+        limiter.clear("dave");
+        assertDoesNotThrow(() -> limiter.check("dave"));
+    }
 }

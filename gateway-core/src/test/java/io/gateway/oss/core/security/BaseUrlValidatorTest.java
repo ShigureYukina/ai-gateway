@@ -64,6 +64,30 @@ class BaseUrlValidatorTest {
     }
 
     @Test
+    void shouldRejectNonWildcardZeroNetwork() {
+        // 0/8 其余地址此前可穿透：isAnyLocalAddress 只精确命中 0.0.0.0
+        assertThrows(GatewayException.class,
+                () -> validator.validate("http://0.1.2.3/v1/models"));
+    }
+
+    @Test
+    void shouldRejectCgnatRange() {
+        // 审查 F11：100.64/10（主机名层面恰好被 "10." 前缀规则拦截，解析层面由 isBlockedIpv4 兜底）
+        assertThrows(GatewayException.class,
+                () -> validator.validate("http://100.64.0.1/v1/models"));
+        assertThrows(GatewayException.class,
+                () -> validator.validate("http://100.127.255.254/v1/models"));
+    }
+
+    @Test
+    void shouldRejectIpv4MappedCgnatAndZeroNetwork() {
+        assertThrows(GatewayException.class,
+                () -> validator.validate("http://[::ffff:100.64.0.1]/v1/models"));
+        assertThrows(GatewayException.class,
+                () -> validator.validate("http://[::ffff:0.1.2.3]/v1/models"));
+    }
+
+    @Test
     void shouldReject10x() {
         assertThrows(GatewayException.class,
                 () -> validator.validate("http://10.0.0.1/v1/models"));

@@ -208,6 +208,7 @@ Simple AI Gateway 是一个活跃的个人开源项目。核心网关能力—�
 | 层级 | 覆盖场景 | 门禁 |
 |------|----------|------|
 | **本地默认门禁** | 普通 Java / 前端改动 | `./mvnw -q -DskipTests compile` · `cd frontend && npm run lint` · `cd frontend && npm run test` · `cd frontend && npm run build` |
+| **本地全量单测** | 提交前 / 批量修复后 / 发布前 | `bash scripts/verify-all.sh`（后端三模块全量 `./mvnw test` + 前端 lint/test/build，任何一段红即失败） |
 | **本地发布前补充** | 认证/API Key/配置写链/Store 改动 | 本地默认门禁 + `./scripts/verify.sh` |
 | **专项诊断** | PG/Redis/Store/性能相关改动 | 本地发布前补充 + 按需 `./scripts/stress-test-backends.sh` |
 

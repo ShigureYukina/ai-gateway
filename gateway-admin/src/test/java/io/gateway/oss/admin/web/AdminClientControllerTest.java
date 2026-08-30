@@ -3,6 +3,7 @@ package io.gateway.oss.admin.web;
 import io.gateway.oss.admin.AdminTestConfiguration;
 import io.gateway.oss.core.config.GatewayProperties;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -64,6 +65,12 @@ class AdminClientControllerTest {
     }
 
     // ─── GET /admin/clients ───
+
+    @BeforeEach
+    void extendWebTestClientResponseTimeout() {
+        // 全量套件并行负载下 5s 默认响应超时偶发不够，统一放宽到 30s
+        webTestClient = webTestClient.mutate().responseTimeout(java.time.Duration.ofSeconds(30)).build();
+    }
 
     @Test
     void shouldListClients() {

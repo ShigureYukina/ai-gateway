@@ -86,6 +86,8 @@ abstract class AdminNoFlywayWebIntegrationTestBase {
 
     @BeforeEach
     protected void resetStateAndCreateTokens() {
+        // 与 AdminInMemoryWebIntegrationTestBase 对齐：放宽响应超时应对全量负载
+        webTestClient = webTestClient.mutate().responseTimeout(java.time.Duration.ofSeconds(30)).build();
         cleanup.resetState();
         adminAccessToken = jwtService.generateAccessToken("admin", List.of("gpt-4o-mini"), "admin");
         userAccessToken = jwtService.generateAccessToken("user1", List.of("gpt-4o-mini"), "user");

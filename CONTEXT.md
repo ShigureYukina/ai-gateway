@@ -15,14 +15,14 @@ Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加
 
 | 模块 | 测试数（约） | 状态 |
 |------|--------|------|
-| gateway-core | ~625 | ✅ 全部通过 |
-| gateway-admin | ~626 | ✅ 全部通过 |
-| bootstrap | 6 (SPA fallback) | ✅ 全部通过 |
+| gateway-core | 625 | ✅ 全部通过 |
+| gateway-admin | 604 | ✅ 全部通过 |
+| bootstrap | 16 | ✅ 全部通过 |
 | frontend | 124 (21 files) | ✅ Vitest + RTL |
 
 | 总览指标 | 数值 |
 |----------|------|
-| 后端测试总数 | ~1250 |
+| 后端测试总数 | 1245 |
 | 前端测试总数 | 124 (21 files) |
 | 黑盒回归测试点 | ~260+（含 7 条无 Docker 用户旅程，支持 in_memory / PostgreSQL+Redis 双路径） |
 | sentrux 质量信号 | **6636**（modularity 4517, equality 6394, depth 5000；acyclicity 10000 完美，冗余度 8910） |
@@ -60,6 +60,7 @@ Spring Boot 3 + WebFlux 多上游 LLM 网关，提供 OpenAI 兼容 API，叠加
 ### 测试
 - **第二轮全量代码审查已完成（2026-08-29，4 个并行专项 + 人工复核）**：P0=0、P1=11、P2=15、P3≈20，高严重度集中在 **PG 计费正确性**（period_key 每月 1 日碰撞/月度成本不入账/flush 丢账/聚合批量整批失败/删除竞态复活）、**事件循环阻塞**（5 处，含每请求热路径的路由韧性回写）、**多节点账户缓存失效缺失**、**自助 key 模型白名单绕过** 四个区域。完整报告与修复排期见 `docs/reviews/2026-08-29-second-review.md`；干净区域（namespace/JWT/权限边界/SQL 参数化/本轮 H4 与 auth 改造）已明确核查记录
 - **审查修复第 1 批已完成（2026-08-29）**：D1 PG 月度 period_key 改为无日分量格式 `clientId:yyyy-MM`（新增 `RedisStoreUtils.monthBucketKey`，仅 PG/Buffered 路径使用，Redis/InMemory 键格式不变；注意：切换当月 PG 月度计数从零重计，此前 8 月 1 日碰撞数据本已无法干净拆分）、D2 `recordCost` 去掉 daily=MAX 短路（月度成本恢复入账）、D4 聚合批量 INSERT 前按 (type,key,bucket) 聚合。**压测额外暴露并修复基线缺陷**：Buffered usage flush 的 SQL 4 占位符 vs builder 5 参数（PG 模式下 usage 缓冲写自基线起 100% 失败、全静默丢失）+ 两缓冲存储 batchUpdate 同键重复行 21000 整批失败（D3 的实际形态比审查评估更严重——不只是故障时丢，是从未成功过）。flushBatch 增加按冲突键聚合 + usage request_cnt 参数化 + pendingSize 回减。**验证闭环**：聚焦测试 77/77 ✓（新增 5 个回归用例）、verify.sh 36/36 ✓、verify-gaps 69/69 ✓、checkstyle ✓、PG+Redis 压测实测：flush 失败 0 次、client_usage 落库 159 万 tokens（修复前 0 行）、cost 正确停在 $1000 日预算下方、成功请求 2149→6792、全程零 500。本机压测环境已搭：PostgreSQL 16.9（`~/tools/pgsql`，数据目录 `E:\pgdata`，端口 5433，llm_user/llm_gateway）+ JMeter 5.6.3（`~/tools`，垫片 `~/bin/jmeter`、`~/bin/redis-cli`）。**第 2 批已完成（2026-08-30）**：D3 配额缓存一致性（记账被拒时 invalidate 预检查缓存 + 缓冲存储越界改走 PG 直连对齐逐周期语义 + flushBatch 事务化/失败回灌重试）、TPM 守卫（reserve INSERT 限额守卫 + adjust 负值钳零）、S1 自助 key 白名单收敛到账户上限子集、S2 账户缓存 30s 周期对账（跨节点冻结/删除最终一致）、D5 删除墓碑 + flush 前检查。压测（大预算）200=16,885（修复前 2,149）、flush 失败 0、零 500。**第 3 批已完成（2026-08-30）**：事件循环阻塞清零（C1 路由韧性写入异步化、C2 登录链路整体移出事件循环、C3 webhook 落库、C4 探活写回、C5 四控制器 10 个同步端点 Mono 化）；安全 P2 组（F3 Redis logout 键统一、F4 refresh token 绑定 tokenVersion、F5 登录限速 IP 维度、F9 webhook URL 走 BaseUrlValidator、F11 校验器补 0/8+CGNAT、F10 新增 application-prod.yml 强制拦截）；发布回滚边界（P2-9 别名锁串行化、P2-10 取消触发补偿回滚）。F12 DNS rebinding TOCTOU 单独延后。验证：聚焦测试全绿、checkstyle ✓、verify 36/36、gaps 69/69、journey 126/127。**审查 P1 全部 11 项修复完成，P2 仅剩 F12 延后**
+- **测试健康度专项已完成（2026-08-30）**：全量套件审计发现并修复——(1) 6 个坏测试：WebhookEndpointServiceTest 因 F9 构造器变更 NPE（已修 + 补 F9 行为用例）、C1 异步化导致 RouteResilienceTrackerTest/RouteLoadBalancerTest/UpstreamChatClientTest 同步断言竞态（tracker 增加测试用 Scheduler 注入点，测试传 `Schedulers.immediate()`）；(2) 存量前端 6 失败：WebhooksPage 测试 mock 形状过时（缺 `endpoints` 包装）+ LoginPage 空 message 错误不显示的组件 bug（组件修复）；(3) 批量修复暴露的 4 类 flaky：BatchFlusherTest 100–200ms 墙钟等待、AdminWebhookControllerTest 3s awaitility、测试基类 JWT `access-expiration=5s` 负载下中途过期致 401（8 个测试属性块提至 300s）、集成测试基类统一 `responseTimeout(30s)`；(4) F11 补充修复：裸 IPv4 的 0/8 与 CGNAT 段此前只拦 IPv4-mapped IPv6，`http://0.1.2.3/` 可穿透（补 isBlockedIpv4 统一检查 + 4 个用例）；(5) 补齐第 3 批安全行为单测：F4 refresh token_revoked 分支 ×3、F5 IP 限速维度 ×6、S1 白名单交集 ×5、P2-2 拒绝缓存失效回归 ×1。**新增一键全量验证入口 `scripts/verify-all.sh`（后端三模块 + 前端 lint/test/build），修复过程累计 3 轮 ALL GREEN（1245 后端 + 124 前端用例）**。教训：第 3 批"聚焦测试全绿"的验证清单未覆盖上述类，全量门禁此后以 verify-all 为准
 - 已完成 1 轮静态性能专项审查（性能 / JVM / 数据库 / Spring / 压测评估 + 总控汇总），结论与当前 Phase K/L 主线一致：主瓶颈仍集中在 `/v1/chat/completions` 成功路径后的 **PostgreSQL 写入链路** 与 **BatchFlusher 过载回退放大**，优先级高于继续做局部 SQL 微调
 - 本轮静态审查新增的 P0 结论：应优先收敛 success path 上的 trace / request log / aggregate metric / usage-cost 高频写放大，减少每次 completions 触发的 PG round-trip；同时将 `BatchFlusher` 中“影响业务正确性”的任务与“仅影响观测完整性”的任务分舱，避免观测类任务在队列积压时同步回退到请求线程
 - 本轮静态审查新增的 P1 结论：后台统计/看板接口存在明显按 client 循环读取（N+1）风险，重点位于 `gateway-admin` 的 usage summary / dashboard 读取路径；此外 JVM/线程池/连接池边界仍缺统一容量模型，当前不应先盲目调大 Hikari 或 BatchFlusher 线程数

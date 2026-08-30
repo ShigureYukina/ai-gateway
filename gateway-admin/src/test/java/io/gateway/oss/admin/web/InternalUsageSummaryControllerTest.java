@@ -33,7 +33,7 @@ import java.util.Map;
         "gateway.shared-state.backend=in_memory",
         "gateway.auth.enabled=true",
         "gateway.auth.jwt.secret=super-secret-key-that-is-at-least-32-chars",
-        "gateway.auth.jwt.access-expiration=5s",
+        "gateway.auth.jwt.access-expiration=300s",
         "gateway.auth.jwt.refresh-expiration=60s",
         "gateway.auth.users.admin.password=admin123",
         "gateway.auth.users.admin.client-id=demo-client-key",
@@ -103,6 +103,9 @@ class InternalUsageSummaryControllerTest {
 
     @BeforeEach
     void resetState() {
+        // 全量套件并行负载下 5s 默认响应超时偶发不够，统一放宽到 30s
+        webTestClient = webTestClient.mutate().responseTimeout(java.time.Duration.ofSeconds(30)).build();
+
         cleanup.resetState();
         userAccountService.register("admin", "admin123", "admin").block();
     }

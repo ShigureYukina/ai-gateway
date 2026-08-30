@@ -176,7 +176,7 @@ class UpstreamChatClientTest {
         );
 
         GatewayProperties properties = resilienceProperties(2);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(properties, java.time.Clock.systemUTC());
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
         tracker.recordRetryableFailure(sampleRoute("backup-a", "openai-compatible", 2, List.of()));
         tracker.recordRetryableFailure(sampleRoute("backup-a", "openai-compatible", 2, List.of()));
 
@@ -208,7 +208,7 @@ class UpstreamChatClientTest {
         );
 
         GatewayProperties properties = resilienceProperties(2);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(properties, java.time.Clock.systemUTC());
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
         UpstreamChatClient client = new UpstreamChatClient(List.of(adapter), tracker, keySelector, keyResilienceTracker);
         ResolvedRoute route = sampleRoute("primary", "openai-compatible", 3, List.of("backup"));
 
@@ -391,7 +391,7 @@ class UpstreamChatClientTest {
         // threshold=1 so a single recorded failure trips the circuit immediately
         GatewayProperties properties = resilienceProperties(1);
         properties.getResilience().setRetryableFailureThreshold(1);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(properties, java.time.Clock.systemUTC());
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
         UpstreamChatClient client = new UpstreamChatClient(List.of(adapter), tracker, keySelector, keyResilienceTracker);
         ResolvedRoute route = sampleRoute("stream-fail", "openai-compatible", 3, List.of());
 
@@ -731,7 +731,8 @@ class UpstreamChatClientTest {
     }
 
     private RouteResilienceTracker resilienceTracker(int maxAttempts) {
-        return new RouteResilienceTracker(resilienceProperties(maxAttempts), java.time.Clock.systemUTC());
+        return new RouteResilienceTracker(new InMemoryRouteStateStore(), resilienceProperties(maxAttempts),
+                java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
     }
 
     private GatewayProperties resilienceProperties(int maxAttempts) {

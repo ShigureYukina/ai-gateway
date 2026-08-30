@@ -23,7 +23,7 @@ class RouteLoadBalancerTest {
         GatewayProperties properties = new GatewayProperties();
         properties.getLoadBalancer().setEnabled(true);
         properties.getResilience().setRetryableFailureThreshold(1);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
         RouteLoadBalancer balancer = new RouteLoadBalancer(properties, tracker);
 
         // Fill the cache with synthetic group keys beyond the limit.
@@ -49,7 +49,7 @@ class RouteLoadBalancerTest {
         GatewayProperties properties = new GatewayProperties();
         properties.getLoadBalancer().setEnabled(true);
         properties.getResilience().setRetryableFailureThreshold(1);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
         RouteLoadBalancer balancer = new RouteLoadBalancer(properties, tracker);
 
         ResolvedRoute a = route("route-a", 1);
@@ -67,7 +67,7 @@ class RouteLoadBalancerTest {
         GatewayProperties properties = new GatewayProperties();
         properties.getLoadBalancer().setEnabled(true);
         properties.getResilience().setRetryableFailureThreshold(1);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
 
         ResolvedRoute only = route("route-a", 1);
         tracker.recordRetryableFailure(only);
@@ -85,7 +85,7 @@ class RouteLoadBalancerTest {
         properties.getResilience().setRetryableFailureThreshold(2);
         properties.getResilience().setFailureWindow(Duration.ofSeconds(30));
         properties.getResilience().setOpenDuration(Duration.ofSeconds(30));
-        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
 
         ResolvedRoute a = route("route-a", 1);
         ResolvedRoute b = route("route-b", 1);
@@ -109,7 +109,7 @@ class RouteLoadBalancerTest {
     void shouldDistributeByWeight() {
         GatewayProperties properties = new GatewayProperties();
         properties.getLoadBalancer().setEnabled(true);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
         RouteLoadBalancer balancer = new RouteLoadBalancer(properties, tracker);
 
         ResolvedRoute heavy = route("heavy", 3);
@@ -136,7 +136,7 @@ class RouteLoadBalancerTest {
     void shouldDistributeEvenlyWithEqualWeights() {
         GatewayProperties properties = new GatewayProperties();
         properties.getLoadBalancer().setEnabled(true);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
         RouteLoadBalancer balancer = new RouteLoadBalancer(properties, tracker);
 
         ResolvedRoute a = route("eq-a", 1);
@@ -163,7 +163,7 @@ class RouteLoadBalancerTest {
     void shouldNotCrashOnSingleRoute() {
         GatewayProperties properties = new GatewayProperties();
         properties.getLoadBalancer().setEnabled(true);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
         RouteLoadBalancer balancer = new RouteLoadBalancer(properties, tracker);
 
         ResolvedRoute only = route("only-route", 1);
@@ -176,7 +176,7 @@ class RouteLoadBalancerTest {
     void shouldSkipRuntimeUnavailableProvider() {
         GatewayProperties properties = new GatewayProperties();
         properties.getLoadBalancer().setEnabled(true);
-        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties, java.time.Clock.systemUTC(), reactor.core.scheduler.Schedulers.immediate());
         InMemoryProviderRuntimeStateStore runtimeStateStore = new InMemoryProviderRuntimeStateStore();
         runtimeStateStore.save("openai", new ProviderRuntimeStateStore.ProviderRuntimeState(
                 false, Instant.now(), null, 3, 0, 503, 100L, "HTTP 503"));

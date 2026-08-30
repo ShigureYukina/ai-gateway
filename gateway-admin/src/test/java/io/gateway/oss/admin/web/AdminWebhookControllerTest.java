@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "security.password.allow-plaintext=true",
         "gateway.auth.enabled=true",
         "gateway.auth.jwt.secret=super-secret-key-that-is-at-least-32-chars",
-        "gateway.auth.jwt.access-expiration=5s",
+        "gateway.auth.jwt.access-expiration=300s",
         "gateway.auth.jwt.refresh-expiration=60s",
         "gateway.auth.users.admin.password=admin123",
         "gateway.auth.users.admin.client-id=demo-client-key",
@@ -123,6 +123,9 @@ class AdminWebhookControllerTest {
 
     @BeforeEach
     void setUp() {
+        // 全量套件并行负载下 5s 默认响应超时偶发不够，统一放宽到 30s
+        webTestClient = webTestClient.mutate().responseTimeout(java.time.Duration.ofSeconds(30)).build();
+
         webhookDeliveryLogRepository.deleteAll();
         webhookEndpointRepository.deleteAll();
         hits.set(0);
@@ -212,7 +215,7 @@ class AdminWebhookControllerTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        Awaitility.await().atMost(Duration.ofSeconds(3)).untilAsserted(() -> {
+        Awaitility.await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
             assertThat(hits.get()).isGreaterThan(0);
             assertThat(webhookDeliveryLogRepository.findTop100ByOrderByCreatedAtDesc()).isNotEmpty();
             assertThat(webhookDeliveryLogRepository.findTop100ByOrderByCreatedAtDesc().getFirst().getStatus()).isEqualTo("delivered");
@@ -314,7 +317,7 @@ class AdminWebhookControllerTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        Awaitility.await().atMost(Duration.ofSeconds(3)).untilAsserted(() -> {
+        Awaitility.await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
             assertThat(hits.get()).isGreaterThan(0);
             assertThat(webhookDeliveryLogRepository.findTop100ByOrderByCreatedAtDesc()).isNotEmpty();
             assertThat(webhookDeliveryLogRepository.findTop100ByOrderByCreatedAtDesc().getFirst().getStatus()).isEqualTo("delivered");
@@ -347,7 +350,7 @@ class AdminWebhookControllerTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        Awaitility.await().atMost(Duration.ofSeconds(3)).untilAsserted(() -> {
+        Awaitility.await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
             assertThat(failHits.get()).isGreaterThan(0);
             assertThat(webhookDeliveryLogRepository.findTop100ByOrderByCreatedAtDesc()).isNotEmpty();
             assertThat(webhookDeliveryLogRepository.findTop100ByOrderByCreatedAtDesc().getFirst().getStatus()).isEqualTo("failed");

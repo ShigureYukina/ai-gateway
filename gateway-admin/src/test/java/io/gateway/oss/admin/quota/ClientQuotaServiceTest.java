@@ -142,6 +142,32 @@ class ClientQuotaServiceTest {
         assertEquals(20L, tokens);
     }
 
+    @Test
+    void rejectedRecordUsageDoesNotPoisonPrecheckCache() {
+        // 审查 P2-2：记录被拒时缓存必须失效回源，而不是写入 0——
+        // put(0) 会把预检查毒化为"未使用"，超限客户端在缓存 TTL 内继续通过预检查打到上游
+        InMemoryClientUsageStore usageStore = new InMemoryClientUsageStore();
+        ClientPrincipal principal = principalWithDailyQuota(100);
+        Instant now = Instant.parse("2026-04-27T01:00:00Z");
+        usageStore.addDailyUsage(principal.clientId(), 100, now);
+
+        ClientQuotaService quotaService = new ClientQuotaService(usageStore);
+        // 预检查把 used=100 装入缓存并拒绝
+        GatewayException first = assertThrows(GatewayException.class,
+                () -> quotaService.checkDailyQuota(principal, now));
+        assertEquals("quota_exceeded", first.getCode());
+
+        // 本次记录超限被拒（100+10 > 100），daily 结果为 -1
+        quotaService.recordUsage(principal,
+                Map.of("usage", Map.of("total_tokens", 10)),
+                requestWithMaxTokens(256),
+                now);
+
+        // 缓存应回源真实值 100 并继续拒绝；若被 put(0) 毒化，这里将静默放行
+        assertThrows(GatewayException.class,
+                () -> quotaService.checkDailyQuota(principal, now));
+    }
+
     private ClientPrincipal principalWithDailyQuota(long dailyTokens) {
         return principalWithQuotas(dailyTokens, null);
     }

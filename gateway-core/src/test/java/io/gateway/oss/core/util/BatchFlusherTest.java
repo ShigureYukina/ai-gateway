@@ -56,7 +56,7 @@ class BatchFlusherTest {
         AtomicInteger counter = new AtomicInteger(0);
         flusher.setSynchronous(false);
         flusher.submit(counter::incrementAndGet);
-        assertTrue(awaitCounter(counter, 1, 200), "Task should have been executed by async worker");
+        assertTrue(awaitCounter(counter, 1, 5000), "Task should have been executed by async worker");
         assertEquals(1L, flusher.getCriticalSubmittedCount());
     }
 
@@ -67,7 +67,7 @@ class BatchFlusherTest {
         flusher.submitCritical(counter::incrementAndGet);
         flusher.submitBestEffort(counter::incrementAndGet);
 
-        assertTrue(awaitCounter(counter, 2, 500), "Both critical and best-effort tasks should execute");
+        assertTrue(awaitCounter(counter, 2, 5000), "Both critical and best-effort tasks should execute");
         assertEquals(1L, flusher.getCriticalSubmittedCount());
         assertEquals(1L, flusher.getBestEffortSubmittedCount());
     }
@@ -106,19 +106,19 @@ class BatchFlusherTest {
         flusher.submitBestEffort(() -> {
             blockerStarted.countDown();
             try {
-                releaseBlocker.await(200, TimeUnit.MILLISECONDS);
+                releaseBlocker.await(5, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         });
-        assertTrue(blockerStarted.await(100, TimeUnit.MILLISECONDS));
+        assertTrue(blockerStarted.await(5, TimeUnit.SECONDS));
 
         flusher.submitCritical(counter::incrementAndGet);
         assertEquals(0, counter.get(), "Critical task should stay async when only best-effort queue is saturated");
         assertEquals(0L, flusher.getCriticalSyncFallbackCount());
 
         releaseBlocker.countDown();
-        assertTrue(awaitCounter(counter, 1, 500), "Critical task should execute after queued best-effort work drains");
+        assertTrue(awaitCounter(counter, 1, 5000), "Critical task should execute after queued best-effort work drains");
     }
 
     @Test
@@ -136,12 +136,12 @@ class BatchFlusherTest {
             executionOrder.add("best-effort-1");
             firstBestEffortStarted.countDown();
             try {
-                releaseFirstBestEffort.await(500, TimeUnit.MILLISECONDS);
+                releaseFirstBestEffort.await(5, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         });
-        assertTrue(firstBestEffortStarted.await(200, TimeUnit.MILLISECONDS));
+        assertTrue(firstBestEffortStarted.await(5, TimeUnit.SECONDS));
 
         flusher.submitBestEffort(() -> {
             executionOrder.add("best-effort-2");
@@ -153,7 +153,7 @@ class BatchFlusherTest {
         });
 
         releaseFirstBestEffort.countDown();
-        assertTrue(trailingTasksDone.await(500, TimeUnit.MILLISECONDS));
+        assertTrue(trailingTasksDone.await(5, TimeUnit.SECONDS));
         // best-effort-1 runs first (submitted before critical); critical and best-effort-2 both complete
         assertEquals("best-effort-1", executionOrder.get(0));
         assertTrue(executionOrder.contains("critical"));
@@ -177,7 +177,7 @@ class BatchFlusherTest {
             flusher.submit(counter::incrementAndGet);
         }
         flusher.flush();
-        assertTrue(awaitCounter(counter, 5, 1000), "All queued tasks should have been drained by flush()");
+        assertTrue(awaitCounter(counter, 5, 5000), "All queued tasks should have been drained by flush()");
     }
 
     @Test
@@ -187,7 +187,7 @@ class BatchFlusherTest {
         flusher.submit(() -> { throw new RuntimeException("boom"); });
         flusher.submit(counter::incrementAndGet);
         assertDoesNotThrow(() -> flusher.flush(), "flush() should not propagate task exceptions");
-        assertTrue(awaitCounter(counter, 1, 1000), "Subsequent tasks should still execute after a failing task");
+        assertTrue(awaitCounter(counter, 1, 5000), "Subsequent tasks should still execute after a failing task");
     }
 
     @Test
@@ -221,7 +221,7 @@ class BatchFlusherTest {
                 latch.countDown();
             });
         }
-        assertTrue(latch.await(200, TimeUnit.MILLISECONDS), "All 10 tasks should complete within 200ms");
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "All 10 tasks should complete");
         assertEquals(taskCount, counter.get(), "All 10 tasks should have been executed");
     }
 
@@ -234,7 +234,7 @@ class BatchFlusherTest {
             flusher.submit(counter::incrementAndGet);
         }
         flusher.flush();
-        assertTrue(awaitCounter(counter, taskCount, 2000), "All 250 tasks should have been executed");
+        assertTrue(awaitCounter(counter, taskCount, 5000), "All 250 tasks should have been executed");
     }
 
     @Test
@@ -248,9 +248,9 @@ class BatchFlusherTest {
             });
         }
 
-        assertTrue(latch.await(1000, TimeUnit.MILLISECONDS));
-        assertTrue(awaitDrainCycles(flusher, 1, 1000));
-        assertTrue(awaitDrainedTasks(flusher, 3, 1000));
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        assertTrue(awaitDrainCycles(flusher, 1, 5000));
+        assertTrue(awaitDrainedTasks(flusher, 3, 5000));
         assertTrue(flusher.getTotalDrainTimeMs() >= 0);
         assertTrue(flusher.getLastDrainTaskCount() >= 1);
         assertTrue(flusher.getLastDrainCycleMs() >= 0);

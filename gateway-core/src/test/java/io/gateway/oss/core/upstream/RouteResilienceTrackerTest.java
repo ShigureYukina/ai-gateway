@@ -18,7 +18,7 @@ class RouteResilienceTrackerTest {
     @Test
     void shouldOpenRouteAfterThresholdAndRecoverAfterWindow() {
         MutableClock clock = new MutableClock(Instant.parse("2026-04-27T00:00:00Z"));
-        RouteResilienceTracker tracker = new RouteResilienceTracker(properties(), clock);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties(), clock, reactor.core.scheduler.Schedulers.immediate());
         ResolvedRoute route = route("openai-primary");
 
         assertTrue(tracker.isAvailable(route));
@@ -36,7 +36,7 @@ class RouteResilienceTrackerTest {
     @Test
     void shouldIgnoreFailuresOutsideConfiguredFailureWindow() {
         MutableClock clock = new MutableClock(Instant.parse("2026-04-27T00:00:00Z"));
-        RouteResilienceTracker tracker = new RouteResilienceTracker(properties(), clock);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties(), clock, reactor.core.scheduler.Schedulers.immediate());
         ResolvedRoute route = route("openai-primary");
 
         tracker.recordRetryableFailure(route);
@@ -49,7 +49,7 @@ class RouteResilienceTrackerTest {
     @Test
     void shouldResetFailureHistoryAfterSuccess() {
         MutableClock clock = new MutableClock(Instant.parse("2026-04-27T00:00:00Z"));
-        RouteResilienceTracker tracker = new RouteResilienceTracker(properties(), clock);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties(), clock, reactor.core.scheduler.Schedulers.immediate());
         ResolvedRoute route = route("openai-primary");
 
         tracker.recordRetryableFailure(route);
@@ -62,7 +62,7 @@ class RouteResilienceTrackerTest {
     @Test
     void shouldHandleConcurrentFailureRecordingWithoutDataLoss() throws Exception {
         MutableClock clock = new MutableClock(Instant.parse("2026-04-27T00:00:00Z"));
-        RouteResilienceTracker tracker = new RouteResilienceTracker(properties(), clock);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties(), clock, reactor.core.scheduler.Schedulers.immediate());
         ResolvedRoute route = route("concurrent-route");
 
         int threadCount = 10;
@@ -103,7 +103,7 @@ class RouteResilienceTrackerTest {
     @Test
     void shouldReopenCircuitWhenFailureOccursAfterOpenDurationRecovery() {
         MutableClock clock = new MutableClock(Instant.parse("2026-04-27T00:00:00Z"));
-        RouteResilienceTracker tracker = new RouteResilienceTracker(properties(), clock);
+        RouteResilienceTracker tracker = new RouteResilienceTracker(new InMemoryRouteStateStore(), properties(), clock, reactor.core.scheduler.Schedulers.immediate());
         ResolvedRoute route = route("probe-route");
 
         // Trip the circuit

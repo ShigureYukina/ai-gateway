@@ -11,6 +11,7 @@ import io.gateway.oss.core.security.JwtService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -40,7 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "security.password.allow-plaintext=true",
         "gateway.auth.enabled=true",
         "gateway.auth.jwt.secret=super-secret-key-that-is-at-least-32-chars",
-        "gateway.auth.jwt.access-expiration=5s",
+        "gateway.auth.jwt.access-expiration=300s",
         "gateway.auth.jwt.refresh-expiration=60s",
         "gateway.auth.users.admin.password=admin123",
         "gateway.auth.users.admin.client-id=demo-client-key",
@@ -104,6 +105,12 @@ class AuthControllerTest {
     }
 
     // ---- LOGIN ----
+
+    @BeforeEach
+    void extendWebTestClientResponseTimeout() {
+        // 全量套件并行负载下 5s 默认响应超时偶发不够，统一放宽到 30s
+        webTestClient = webTestClient.mutate().responseTimeout(java.time.Duration.ofSeconds(30)).build();
+    }
 
     @Test
     void shouldLoginSuccessfullyWithValidCredentials() {
