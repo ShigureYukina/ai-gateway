@@ -7,6 +7,17 @@
 
 ## 最近完成（2026-06-03 ~ 2026-06-09）
 
+### 最新完成（2026-08-30 — 审查修复第 2 批）
+
+- **配额缓存一致性（D3/毒化组）**：记账被拒时预检查缓存 invalidate（原 put 0 毒化）；Buffered usage/cost 越界时改走 PG 直连（对齐逐周期独立语义，弃双回滚 (-1,-1)）；flushBatch 事务化（daily+monthly 同事务回滚）+ 失败整批回灌重试（D3 闭环：不再静默丢账）
+- **TPM 守卫（P2-3）**：reserve INSERT 路径补 `SELECT ... WHERE ? <= ?` 限额守卫；adjust INSERT 负 delta 钳零
+- **S1 白名单交集**：UserApiKeyService.restrictToAccountModels——自助创建/修改 key 的 allowedModels 收敛到账户上限子集（key 白名单非空时运行时跳过 client/账户级准入的绕过路径封死）；账户无上限不收敛
+- **S2 账户缓存对账**：reconcileAccountCache（@Scheduled 30s）从存储全量对账 + 驱逐他节点删除的账户，冻结/删除最终一致
+- **D5 删除竞态**：DirtyAccountFlushBuffer 删除墓碑（markDeleted + flush 保存前检查），复活窗口收敛；残余窗口由 S2 对账兜底
+- **脚本**：stress-test-backends.sh 预算常量支持环境覆盖（warm-up 消耗 daily 预算导致 measurement 全 429 的 sequencing 问题）
+- 验证：admin 聚焦 75/75 ✓、core 聚焦（UserAccountService 44 含 S1/S2、DirtyAccountFlushBuffer 2、ClientAuth 26）✓、checkstyle ✓、verify.sh 36/36 ✓、verify-gaps 69/69 ✓、PG 压测（大预算）**200=16,885**（修复前 2,149）、flush 失败 0、零 500、p99=41ms
+
+
 ### 最新完成（2026-08-29 — 审查修复第 1 批：PG 计费正确性三连修）
 
 - **D1 period_key 每月 1 日碰撞**：新增 `RedisStoreUtils.monthBucketKey`（`clientId:yyyy-MM`，无日分量），`PostgresClientUsageStore/CostStore` 与 `BufferedClientUsageStore/CostStore` 的月度读写/播种/flush 全部切换；Redis/InMemory 键格式不变（分 map/前缀天然区分，且避免月中重置）。**切换当月 PG 月度计数从零重计**（8 月 1 日碰撞数据本已无法干净拆分，不做数据迁移）。回归用例：`checkAndRecordBoth_usesDistinctDailyAndMonthlyPeriodKeysOnFirstOfMonth`（2026-09-01 场景断言 daily/monthly 键互异）
