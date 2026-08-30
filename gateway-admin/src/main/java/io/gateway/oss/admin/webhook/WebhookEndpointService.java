@@ -2,6 +2,7 @@ package io.gateway.oss.admin.webhook;
 
 import io.gateway.oss.admin.entity.WebhookEndpointEntity;
 import io.gateway.oss.core.error.GatewayException;
+import io.gateway.oss.core.security.BaseUrlValidator;
 import io.gateway.oss.admin.repository.WebhookEndpointRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,9 +16,12 @@ import java.util.List;
 public class WebhookEndpointService {
 
     private final WebhookEndpointRepository webhookEndpointRepository;
+    private final BaseUrlValidator baseUrlValidator;
 
-    public WebhookEndpointService(WebhookEndpointRepository webhookEndpointRepository) {
+    public WebhookEndpointService(WebhookEndpointRepository webhookEndpointRepository,
+                                  BaseUrlValidator baseUrlValidator) {
         this.webhookEndpointRepository = webhookEndpointRepository;
+        this.baseUrlValidator = baseUrlValidator;
     }
 
     public List<WebhookEndpointView> list() {
@@ -67,6 +71,8 @@ public class WebhookEndpointService {
     private void apply(WebhookEndpointEntity entity, UpsertWebhookEndpointCommand command) {
         entity.setName(command.name());
         entity.setUrl(command.url());
+        // 审查 F9：webhook URL 与 provider baseUrl 同权责面，必须走同一 SSRF 校验
+        baseUrlValidator.validate(command.url());
         entity.setSecret(command.secret());
         entity.setEnabled(command.enabled());
         entity.setEventTypes(normalizeEventTypes(command.eventTypes()));

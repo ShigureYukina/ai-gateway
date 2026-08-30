@@ -94,6 +94,8 @@ public class ProviderHealthScheduler {
                     }
 
                     boolean finalRuntimeAvailable = runtimeAvailable;
+                    // 状态写回（Redis/JDBC 阻塞调用）移到 boundedElastic，避免占用
+                    // 探活响应线程（审查 C4）
                     return Mono.fromRunnable(() -> {
                         runtimeStateStore.save(providerName, new ProviderRuntimeStateStore.ProviderRuntimeState(
                                 finalRuntimeAvailable,
@@ -121,7 +123,7 @@ public class ProviderHealthScheduler {
                             log.debug("provider_health_checked trigger={} provider={} status={} runtimeAvailable={} latencyMs={}",
                                     trigger, providerName, result.status(), finalRuntimeAvailable, result.latencyMs());
                         }
-                    });
+                    }).subscribeOn(Schedulers.boundedElastic());
                 })
                 .then();
     }

@@ -16,6 +16,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @RestController
 @Validated
@@ -35,62 +37,62 @@ public class InternalUsageSummaryController {
     }
 
     @GetMapping("/usage/summary")
-    public UsageSummaryResponse usageSummary(
+    public Mono<UsageSummaryResponse> usageSummary(
             ServerWebExchange exchange,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
             @RequestParam(name = "client", required = false) String client,
             @RequestParam(name = "day", required = false) String day) {
         requireSystemAccess(exchange);
-        return usageSummaryReadService.usageSummary(client, resolveDay(day));
+        return Mono.fromCallable(() -> usageSummaryReadService.usageSummary(client, resolveDay(day))).subscribeOn(Schedulers.boundedElastic());
     }
 
     @GetMapping("/cost/summary")
-    public CostSummaryResponse costSummary(
+    public Mono<CostSummaryResponse> costSummary(
             ServerWebExchange exchange,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
             @RequestParam(name = "client", required = false) String client,
             @RequestParam(name = "day", required = false) String day) {
         requireSystemAccess(exchange);
-        return usageSummaryReadService.costSummary(client, resolveDay(day));
+        return Mono.fromCallable(() -> usageSummaryReadService.costSummary(client, resolveDay(day))).subscribeOn(Schedulers.boundedElastic());
     }
 
     @GetMapping("/reporting/providers")
-    public AggregateReportingService.ReportingBucket providerReporting(
+    public Mono<AggregateReportingService.ReportingBucket> providerReporting(
             ServerWebExchange exchange,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
             @RequestParam(name = "period", required = false) String period,
             @RequestParam(name = "date", required = false) String date) {
         requireSystemAccess(exchange);
-        return aggregateReportingService.providers(period, date);
+        return Mono.fromCallable(() -> aggregateReportingService.providers(period, date)).subscribeOn(Schedulers.boundedElastic());
     }
 
     @GetMapping("/reporting/users")
-    public AggregateReportingService.ReportingBucket userReporting(
+    public Mono<AggregateReportingService.ReportingBucket> userReporting(
             ServerWebExchange exchange,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
             @RequestParam(name = "period", required = false) String period,
             @RequestParam(name = "date", required = false) String date) {
         requireSystemAccess(exchange);
-        return aggregateReportingService.users(period, date);
+        return Mono.fromCallable(() -> aggregateReportingService.users(period, date)).subscribeOn(Schedulers.boundedElastic());
     }
 
     @GetMapping("/reporting/keys")
-    public AggregateReportingService.ReportingBucket keyReporting(
+    public Mono<AggregateReportingService.ReportingBucket> keyReporting(
             ServerWebExchange exchange,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
             @RequestParam(name = "period", required = false) String period,
             @RequestParam(name = "date", required = false) String date) {
         requireSystemAccess(exchange);
-        return aggregateReportingService.keys(period, date);
+        return Mono.fromCallable(() -> aggregateReportingService.keys(period, date)).subscribeOn(Schedulers.boundedElastic());
     }
 
     @GetMapping("/dashboard/overview")
-    public DashboardOverviewResponse dashboardOverview(
+    public Mono<DashboardOverviewResponse> dashboardOverview(
             ServerWebExchange exchange,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
             @RequestParam(name = "day", required = false) String day) {
         requireSystemAccess(exchange);
-        return usageSummaryReadService.dashboardOverview(resolveDay(day));
+        return Mono.fromCallable(() -> usageSummaryReadService.dashboardOverview(resolveDay(day))).subscribeOn(Schedulers.boundedElastic());
     }
 
     @GetMapping("/usage/tpm")

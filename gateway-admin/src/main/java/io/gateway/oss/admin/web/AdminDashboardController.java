@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @RestController
 @Validated
@@ -27,12 +29,12 @@ public class AdminDashboardController extends AdminBaseController {
     }
 
     @GetMapping("/overview")
-    public AdminDashboardOverviewResponse overview(
+    public Mono<AdminDashboardOverviewResponse> overview(
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
             @RequestParam(name = "day", required = false)
             @Pattern(regexp = "^\\d{4}-\\d{2}-\\d{2}$", message = "day must match YYYY-MM-DD") String day) {
         requireAdminAccess(authorizationHeader);
-        return adminDashboardOverviewService.buildOverview(resolveDay(day));
+        return Mono.fromCallable(() -> adminDashboardOverviewService.buildOverview(resolveDay(day))).subscribeOn(Schedulers.boundedElastic());
     }
 
     private LocalDate resolveDay(String day) {

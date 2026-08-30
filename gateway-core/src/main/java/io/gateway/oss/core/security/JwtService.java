@@ -96,16 +96,19 @@ public class JwtService {
     /**
      * 生成 refresh token。
      */
-    public String generateRefreshToken(String username) {
-        return generateRefreshToken(username, username);
+    public String generateRefreshToken(String username, int tokenVersion) {
+        return generateRefreshToken(username, username, tokenVersion);
     }
 
-    public String generateRefreshToken(String username, String clientId) {
+    // refresh token 绑定签发时的 tokenVersion（审查 F4）：改密/重置/降权会
+    // 递增账户 tokenVersion，旧 refresh token 随之失效，"改密踢出所有会话"成立。
+    public String generateRefreshToken(String username, String clientId, int tokenVersion) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + jwtConfig.getRefreshExpiration().toMillis());
         var builder = Jwts.builder()
                 .subject(username)
                 .claim("typ", "refresh")
+                .claim("tokenVersion", tokenVersion)
                 .issuedAt(now)
                 .expiration(expiry);
         if (clientId != null && !clientId.isBlank() && !clientId.equals(username)) {

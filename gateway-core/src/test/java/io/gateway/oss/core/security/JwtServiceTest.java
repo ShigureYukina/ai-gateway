@@ -60,7 +60,7 @@ class JwtServiceTest {
 
     @Test
     void generateRefreshToken_andParse_roundTrip() {
-        String token = jwtService.generateRefreshToken("client1");
+        String token = jwtService.generateRefreshToken("client1", 0);
         Claims claims = jwtService.parseToken(token);
 
         assertEquals("client1", claims.getSubject());
@@ -71,7 +71,7 @@ class JwtServiceTest {
 
     @Test
     void generateRefreshToken_withSeparateClientId_claimRoundTrip() {
-        String token = jwtService.generateRefreshToken("admin", "demo-client-key");
+        String token = jwtService.generateRefreshToken("admin", "demo-client-key", 0);
         Claims claims = jwtService.parseToken(token);
 
         assertEquals("admin", claims.getSubject());
@@ -110,7 +110,7 @@ class JwtServiceTest {
 
     @Test
     void isRefreshToken_trueForRefresh() {
-        String token = jwtService.generateRefreshToken("client1");
+        String token = jwtService.generateRefreshToken("client1", 0);
         Claims claims = jwtService.parseToken(token);
         assertTrue(jwtService.isRefreshToken(claims));
     }

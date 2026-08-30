@@ -61,6 +61,53 @@ public class LoginRateLimiter {
         backend.clear(username);
     }
 
+    // ─── IP 维度（每节点内存限速，审查 F5）───
+    // credential stuffing 用海量用户名可绕过按用户名计数；IP 维度独立计数。
+    // 单机内存实现即可满足个人部署；阈值高于用户名维度（同一出口 IP 多用户共享）。
+
+    private static final int MAX_IP_ATTEMPTS = 30;
+    private final ConcurrentHashMap<String, IpWindow> attemptsByIp = new ConcurrentHashMap<>();
+
+    public void checkIp(String ip) {
+        if (ip == null || ip.isBlank()) {
+            return;
+        }
+        IpWindow w = attemptsByIp.get(ip);
+        if (w == null) {
+            return;
+        }
+        if (w.start().plusSeconds(WINDOW_SECONDS).isBefore(Instant.now())) {
+            attemptsByIp.remove(ip);
+            return;
+        }
+        if (w.count() >= MAX_IP_ATTEMPTS) {
+            throw new GatewayException(HttpStatus.TOO_MANY_REQUESTS,
+                    "login_rate_limited_ip",
+                    "Too many login attempts from this address, please try again later");
+        }
+    }
+
+    public void recordIpFailure(String ip) {
+        if (ip == null || ip.isBlank()) {
+            return;
+        }
+        Instant now = Instant.now();
+        attemptsByIp.compute(ip, (key, w) -> {
+            if (w == null || w.start().plusSeconds(WINDOW_SECONDS).isBefore(now)) {
+                return new IpWindow(now, 1);
+            }
+            return new IpWindow(w.start(), w.count() + 1);
+        });
+    }
+
+    public void clearIp(String ip) {
+        if (ip != null) {
+            attemptsByIp.remove(ip);
+        }
+    }
+
+    private record IpWindow(Instant start, int count) {}
+
     // ─── Backend interface ───
 
     private interface LoginRateLimiterBackend {

@@ -15,6 +15,8 @@ import org.springframework.web.server.ServerWebExchange;
 
 import java.time.Instant;
 import java.util.Map;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @RestController
 @Validated
@@ -36,9 +38,10 @@ public class InternalSystemStatusController {
     }
 
     @GetMapping("/internal/system/status")
-    public SystemStatusResponse systemStatus(ServerWebExchange exchange,
-                                             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
+    public Mono<SystemStatusResponse> systemStatus(ServerWebExchange exchange,
+                                                   @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
         requireSystemAccess(exchange);
+        return Mono.fromCallable(() -> {
         var gateState = operationalGateService.snapshot();
         boolean hasAvailableRoute = hasAnyAvailableRoute();
         return new SystemStatusResponse(
@@ -51,6 +54,7 @@ public class InternalSystemStatusController {
                 ),
                 new GlobalCircuitView(hasAvailableRoute)
         );
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     private boolean hasAnyAvailableRoute() {

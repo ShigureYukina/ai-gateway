@@ -84,8 +84,13 @@ public class WebhookDispatcherService {
                                 .jitter(0.5))
                         .subscribeOn(Schedulers.boundedElastic())
                         .subscribe(
-                                status -> webhookDeliveryLogService.markDelivered(logEntry, status, attempts.get()),
-                                ex -> webhookDeliveryLogService.markFailed(logEntry, null, ex.getMessage(), attempts.get())
+                                // 投递完成信号来自 WebClient 事件循环，JPA 落库移到 boundedElastic（审查 C3）
+                                status -> Mono.fromRunnable(() -> webhookDeliveryLogService.markDelivered(logEntry, status, attempts.get()))
+                                        .subscribeOn(Schedulers.boundedElastic())
+                                        .subscribe(),
+                                ex -> Mono.fromRunnable(() -> webhookDeliveryLogService.markFailed(logEntry, null, ex.getMessage(), attempts.get()))
+                                        .subscribeOn(Schedulers.boundedElastic())
+                                        .subscribe()
                         );
             }
         } catch (Exception ex) {
