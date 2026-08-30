@@ -7,6 +7,15 @@
 
 ## 最近完成（2026-06-03 ~ 2026-06-09）
 
+### 最新完成（2026-08-30 — 审查修复第 3 批，P1 全部收口）
+
+- **事件循环阻塞清零（C1-C5）**：C1 RouteResilienceTracker.record* 异步化（fire-and-forget boundedElastic，每请求热路径不再阻塞；韧性状态允许毫秒级陈旧）；C2 登录链路 Mono.defer + subscribeOn（限速/BCrypt/静态回退全移出事件循环）；C3 webhook 投递结果 JPA 落库异步化；C4 探活写回补 subscribeOn；C5 AdminDashboard/InternalSystemStatus/InternalProviderState/InternalUsageSummary 共 10 个同步端点 Mono.fromCallable 化
+- **安全 P2 组**：F3 Redis logout 键统一（原写 refresh-token-consumed:* 与 consumeOnce 的 refresh-token-blacklist:* 分裂，logout 形同虚设）；F4 refresh token 绑定 tokenVersion（改密/重置踢出会话；存量无 claim 的旧 token 视为 v0 兼容）；F5 登录限速 IP 维度（每节点 30 次/5min，credential stuffing 与 BCrypt CPU 耗尽不再无界）；F9 webhook URL 走 BaseUrlValidator；F10 application-prod.yml 强制 block-internal-urls=true（localhost mock 依赖 false，仅 prod 覆盖）；F11 校验器补 0.0.0.0/8 + CGNAT 100.64/10
+- **发布回滚边界**：P2-9 同 alias 并发发布按订阅串行化（ReentrantLock + Mono.defer，快照/补偿持锁重建）；P2-10 doOnCancel 触发补偿回滚（排空式消费，与错误路径互斥；在途写 best-effort）
+- F12（DNS rebinding TOCTOU）延后：需出站解析钉扎，工作量大
+- 验证：core 聚焦全绿（JWT 16、Auth 26、账户 44、黑名单 5、限速 5、Validator 22、墓碑 2）、admin 聚焦 93/93（Auth 50 含登录登出刷新全链路）、checkstyle ✓、verify.sh 36/36、verify-gaps 69/69、user-journey 126/127（lsof 环境断言，非功能）
+
+
 ### 最新完成（2026-08-30 — 审查修复第 2 批）
 
 - **配额缓存一致性（D3/毒化组）**：记账被拒时预检查缓存 invalidate（原 put 0 毒化）；Buffered usage/cost 越界时改走 PG 直连（对齐逐周期独立语义，弃双回滚 (-1,-1)）；flushBatch 事务化（daily+monthly 同事务回滚）+ 失败整批回灌重试（D3 闭环：不再静默丢账）

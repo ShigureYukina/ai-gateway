@@ -49,7 +49,7 @@ sentrux_check_rules
 
 基于最近一轮结构实验、全量验证与双路径压测，当前后续计划需要从"继续验证 feature 纵切是否对 sentrux 有正反馈"，逐步切换到"在保持小步结构收敛的同时，优先定位并收敛 PostgreSQL 写入链路瓶颈"。
 
-**2026-08-29 更新：第二轮全量代码审查完成（`docs/reviews/2026-08-29-second-review.md`），修复主线已切换为审查发现收敛**——**第 1 批已完成**：D1 period_key 月 1 日碰撞（月度键改 `clientId:yyyy-MM`，PG/Buffered 路径专用 `monthBucketKey`）、D2 月度成本不入账（去掉 recordCost 短路）、D4 聚合批量按冲突键聚合；聚焦测试 77/77、verify 36/36、gaps 69/69、checkstyle 全过。**第 2 批已完成（2026-08-30）**：配额缓存毒化组 + flush 事务化回灌 + TPM 守卫 + S1 白名单交集 + S2 账户缓存对账 + D5 删除墓碑；压测大预算复跑 200=16,885、flush 失败 0。**第 3 批待启动**：事件循环阻塞 C1-C5 与安全 P2 组。Phase J（结构纵切）与性能主线继续让位，除非审查发现全部收口。
+**2026-08-29 更新：第二轮全量代码审查完成（`docs/reviews/2026-08-29-second-review.md`），修复主线已切换为审查发现收敛**——**第 1 批已完成**：D1 period_key 月 1 日碰撞（月度键改 `clientId:yyyy-MM`，PG/Buffered 路径专用 `monthBucketKey`）、D2 月度成本不入账（去掉 recordCost 短路）、D4 聚合批量按冲突键聚合；聚焦测试 77/77、verify 36/36、gaps 69/69、checkstyle 全过。**第 2 批已完成（2026-08-30）**：配额缓存毒化组 + flush 事务化回灌 + TPM 守卫 + S1 白名单交集 + S2 账户缓存对账 + D5 删除墓碑；压测大预算复跑 200=16,885、flush 失败 0。**第 3 批已完成（2026-08-30）**：事件循环阻塞 C1-C5 清零、安全 P2 组（logout 键/refresh 版本/IP 限速/webhook SSRF/SSRF 缺口）、发布回滚边界（别名锁 + 取消回滚）；**审查 P1 全部 11 项修复完成，P2 仅剩 F12 延后 + P3 长尾**。Phase J（结构纵切）与性能主线继续让位，除非审查发现全部收口。
 
 当前已确认事实：
 
