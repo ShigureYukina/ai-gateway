@@ -41,14 +41,17 @@ public class PostgresClientTpmStore implements ClientTpmStore {
         }
         String minuteKey = minuteKey(clientId, now);
 
-        // Single SQL with RETURNING — INSERT or conditional UPDATE in one round-trip
+        // Single SQL with RETURNING — INSERT or conditional UPDATE in one round-trip.
+        // INSERT 路径同样带限额守卫（SELECT ... WHERE ? <= ?）：新分钟首请求若
+        // tokens > tpmLimit 必须同样拒绝，对齐 Redis/InMemory 语义。
         Long result = jdbc.query(
-            "INSERT INTO client_tpm_usage (namespace, client_id, minute_key, tokens) VALUES (?, ?, ?, ?) " +
+            "INSERT INTO client_tpm_usage (namespace, client_id, minute_key, tokens) " +
+            "SELECT ?, ?, ?, ? WHERE ? <= ? " +
             "ON CONFLICT (namespace, client_id, minute_key) DO UPDATE SET tokens = client_tpm_usage.tokens + ? " +
             "WHERE client_tpm_usage.tokens + ? <= ? " +
             "RETURNING tokens",
             rs -> rs.next() ? rs.getLong("tokens") : null,
-            namespace, clientId, minuteKey, tokens, tokens, tokens, tpmLimit
+            namespace, clientId, minuteKey, tokens, tokens, tpmLimit, tokens, tokens, tpmLimit
         );
         // No rows returned when the UPSERT conflicts but the WHERE prevents the update
         return result != null ? result : -1L;
@@ -58,8 +61,10 @@ public class PostgresClientTpmStore implements ClientTpmStore {
     public void adjust(String clientId, long deltaTokens, Instant now) {
         if (deltaTokens == 0) return;
         String minuteKey = minuteKey(clientId, now);
+        // 插入路径同样钳零：负 delta 命中不存在的分钟 key 时不得写入负数行
         jdbc.update(
-            "INSERT INTO client_tpm_usage (namespace, client_id, minute_key, tokens) VALUES (?, ?, ?, ?) " +
+            "INSERT INTO client_tpm_usage (namespace, client_id, minute_key, tokens) " +
+            "SELECT ?, ?, ?, GREATEST(?, 0) " +
             "ON CONFLICT (namespace, client_id, minute_key) DO UPDATE SET tokens = GREATEST(0, client_tpm_usage.tokens + ?)",
             namespace, clientId, minuteKey, deltaTokens, deltaTokens
         );

@@ -123,16 +123,12 @@ public class BufferedClientUsageStore implements ClientUsageStore {
         long newDaily = daily.addAndGet(tokens);
         long newMonthly = monthly.addAndGet(tokens);
 
-        // Check quota
-        if (newDaily > dailyQuota) {
-            daily.addAndGet(-tokens);
-            monthly.addAndGet(-tokens);
-            return new UsageCheckResult(-1L, -1L);
-        }
-        if (newMonthly > monthlyQuota) {
-            daily.addAndGet(-tokens);
-            monthly.addAndGet(-tokens);
-            return new UsageCheckResult(-1L, -1L);
+        // 任一周期越界：内存预占保留（后续预检查继续看到超限值），记录改走
+        // PG 直连由 CTE 做逐周期独立的权威记账——与 PG CTE / 默认实现语义对齐
+        // （原实现双回滚返回 (-1,-1)，与单边拒绝语义分裂，且 (-1) 会让下游把
+        // 预检查缓存毒化为 0）。直连写入不含本记录，与内存合计保持一致。
+        if (newDaily > dailyQuota || newMonthly > monthlyQuota) {
+            return delegate.checkAndRecordBoth(clientId, tokens, dailyQuota, monthlyQuota, now);
         }
 
         // Buffer for async flush

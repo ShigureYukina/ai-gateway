@@ -62,6 +62,26 @@ final class UserApiKeyService {
         return safeApiKeys(account).stream().anyMatch(k -> matchesApiKey(apiKey, k.apiKey()) && k.enabled());
     }
 
+    /**
+     * 自助 key 的 allowedModels 只能是账户模型上限的子集：key 级白名单非空时，
+     * 运行时模型准入（authorizeModel）会跳过 client/账户级检查，不收敛交集
+     * 即可绕过 restricted 注册模板等账户级限制。
+     * 账户上限为 null/空（未设置账户级约束）时不收敛，返回归一化后的请求值。
+     */
+    Set<String> restrictToAccountModels(Set<String> requested, Set<String> accountAllowedModels) {
+        Set<String> normalized = allowedModelsNormalizer.apply(requested);
+        if (accountAllowedModels == null || accountAllowedModels.isEmpty()) {
+            return normalized;
+        }
+        Set<String> restricted = new java.util.LinkedHashSet<>();
+        for (String model : normalized) {
+            if (accountAllowedModels.contains(model)) {
+                restricted.add(model);
+            }
+        }
+        return restricted;
+    }
+
     UserAccount.ApiKeyRecord createApiKeyRecord(String name, Set<String> allowedModels) {
         long now = System.currentTimeMillis();
         return new UserAccount.ApiKeyRecord(

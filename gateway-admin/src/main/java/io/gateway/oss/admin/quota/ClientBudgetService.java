@@ -117,10 +117,20 @@ public class ClientBudgetService implements io.gateway.oss.core.contract.BudgetS
         if (result.monthlyMicros() < 0) {
             log.warn("cost_monthly_budget_exceeded_during_record clientId={}", principal.clientId());
         }
-        dailyCostCache.put(dailyKey(principal.clientId(), now),
-                BigDecimal.valueOf(result.dailyMicros() >= 0 ? result.dailyMicros() : 0).scaleByPowerOfTen(-COST_SCALE));
-        monthlyCostCache.put(monthlyKey(principal.clientId(), now),
-                BigDecimal.valueOf(result.monthlyMicros() >= 0 ? result.monthlyMicros() : 0).scaleByPowerOfTen(-COST_SCALE));
+        // 被拒时使预检查缓存失效（下次检查回源真实累计值）：put 0 会把预检查
+        // 毒化为"未使用"，让已超预算客户端在缓存 TTL 内继续通过预检查打到上游。
+        if (result.dailyMicros() >= 0) {
+            dailyCostCache.put(dailyKey(principal.clientId(), now),
+                    BigDecimal.valueOf(result.dailyMicros()).scaleByPowerOfTen(-COST_SCALE));
+        } else {
+            dailyCostCache.invalidate(dailyKey(principal.clientId(), now));
+        }
+        if (result.monthlyMicros() >= 0) {
+            monthlyCostCache.put(monthlyKey(principal.clientId(), now),
+                    BigDecimal.valueOf(result.monthlyMicros()).scaleByPowerOfTen(-COST_SCALE));
+        } else {
+            monthlyCostCache.invalidate(monthlyKey(principal.clientId(), now));
+        }
     }
 
     static String costPeriodKey(Instant now) {

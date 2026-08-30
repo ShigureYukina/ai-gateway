@@ -10,6 +10,7 @@ import org.springframework.context.event.EventListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Mono;
 
@@ -82,6 +83,41 @@ public class UserAccountService {
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         init();
+    }
+
+    /**
+     * 周期性对账：账户缓存无跨节点失效机制（审查 S2）——多节点部署下其它节点的
+     * 冻结/删除/降权/改密不会广播到本节点。这里周期性从存储全量对账：
+     * 刷新有变化的账户、驱逐存储中已不存在的账户（其它节点删除），使处置
+     * 在各节点最终一致。间隔在一致性与存储负载间取衡。
+     */
+    @Scheduled(fixedDelay = 30_000)
+    public void reconcileAccountCache() {
+        try {
+            Map<String, String> all = configStore.loadAll(CONFIG_TYPE).block();
+            if (all == null) {
+                return;
+            }
+            java.util.Set<String> storeUsernames = new java.util.HashSet<>(all.size());
+            for (String json : all.values()) {
+                UserAccount account = accountCodec.fromJson(json);
+                if (account == null) {
+                    continue;
+                }
+                storeUsernames.add(account.username());
+                UserAccount cached = cacheIndex.findCachedByUsername(account.username());
+                if (cached == null || !cached.equals(account)) {
+                    cacheIndex.refreshIndexes(cached, account);
+                }
+            }
+            for (UserAccount cached : cacheIndex.cachedAccounts()) {
+                if (!storeUsernames.contains(cached.username())) {
+                    cacheIndex.evictAccount(cached);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("account_cache_reconcile_failed cause={}", e.toString());
+        }
     }
 
     /**
@@ -398,7 +434,7 @@ public class UserAccountService {
         return findByUsername(username)
                 .switchIfEmpty(Mono.error(new GatewayException(HttpStatus.NOT_FOUND, "user_not_found", "User not found")))
                 .flatMap(existing -> {
-                    dirtyAccountFlushBuffer.removeDirty(username);
+                    dirtyAccountFlushBuffer.markDeleted(username);
                     UserAccount bumped = new UserAccount(
                             existing.username(),
                             existing.passwordHash(),
@@ -437,7 +473,9 @@ public class UserAccountService {
                     if (existing.frozen()) {
                         return Mono.error(new GatewayException(HttpStatus.FORBIDDEN, "account_frozen", "Account is frozen"));
                     }
-                    UserAccount.ApiKeyRecord record = userApiKeyService.createApiKeyRecord(name, allowedModels);
+                    // 自助创建的 key 白名单必须收敛到账户模型上限内（S1）
+                    UserAccount.ApiKeyRecord record = userApiKeyService.createApiKeyRecord(
+                            name, userApiKeyService.restrictToAccountModels(allowedModels, existing.allowedModels()));
                     UserAccount updated = userApiKeyService.addApiKey(existing, record);
                     return configStore.save(CONFIG_TYPE, username, accountCodec.toJsonForStorage(updated))
                             .then(Mono.fromRunnable(() -> refreshIndexes(existing, updated)))
@@ -482,7 +520,10 @@ public class UserAccountService {
         return findByUsername(username)
                 .switchIfEmpty(Mono.error(new GatewayException(HttpStatus.NOT_FOUND, "user_not_found", "User not found")))
                 .flatMap(existing -> {
-                    UserAccount updated = userApiKeyService.updateApiKey(existing, keyId, enabled, name, allowedModels);
+                    // 自助修改的 key 白名单同样收敛到账户模型上限内（S1）；null 表示不修改
+                    Set<String> effectiveModels = allowedModels == null ? null
+                            : userApiKeyService.restrictToAccountModels(allowedModels, existing.allowedModels());
+                    UserAccount updated = userApiKeyService.updateApiKey(existing, keyId, enabled, name, effectiveModels);
                     return configStore.save(CONFIG_TYPE, username, accountCodec.toJsonForStorage(updated))
                             .then(Mono.fromRunnable(() -> refreshIndexes(existing, updated)));
                 });
@@ -654,7 +695,7 @@ public class UserAccountService {
             return;
         }
         cacheIndex.evictAccount(existing);
-        dirtyAccountFlushBuffer.removeDirty(existing.username());
+        dirtyAccountFlushBuffer.markDeleted(existing.username());
     }
 
     private void refreshIndexes(UserAccount existing, UserAccount updatedRaw) {
