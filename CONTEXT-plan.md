@@ -232,8 +232,8 @@ aggregate 写缓冲（SQL 调用 -99%）、usage/cost CTE 合并、BatchFlusher 
 |------|------|
 | `./mvnw -q -DskipTests compile` | 是 |
 | `./scripts/verify.sh` | 是 |
-| `./scripts/stress-test-backends.sh` | 是 |
-| `./scripts/stress-test.sh` | 建议 |
+| 聚焦单测 + verify-gaps.sh（涉及配额/计费/存储时） | 是 |
+| `./scripts/stress-test-backends.sh` | **否（2026-08-30 起：用户决定不再跑压测，功能正常即可）**；性能结论以既有基线（HYBRID 234.3 req/s / p50 72ms / p99 259ms）为准 |
 | `./mvnw test` | 按改动范围聚焦复验，必要时再全量 |
 
 ### 验收标准
