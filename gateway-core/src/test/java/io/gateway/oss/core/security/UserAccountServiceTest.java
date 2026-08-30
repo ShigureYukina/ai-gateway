@@ -36,6 +36,46 @@ class UserAccountServiceTest {
         dirtyAccountFlushBuffer.shutdown();
     }
 
+    @Test
+    void shouldRestrictSelfServiceKeyModelsToAccountCeiling() {
+        // 审查 S1：key 级白名单非空时运行时会跳过账户/client 级模型准入，
+        // 自助 key 的 allowedModels 必须收敛到账户上限的子集。
+        service.register("alice", "password123", "user", null,
+                Set.of("gpt-4o-mini", "claude-3"), null, null).block();
+
+        UserAccount.ApiKeyRecord record = service.createApiKey("alice", "test",
+                Set.of("claude-3", "gpt-4o", "gemini")).block();
+
+        assertThat(record.allowedModels()).containsExactlyInAnyOrder("claude-3");
+    }
+
+    @Test
+    void shouldNotRestrictKeyModelsWhenAccountHasNoCeiling() {
+        service.register("bob", "password123", "user", null, null, null, null).block();
+
+        UserAccount.ApiKeyRecord record = service.createApiKey("bob", "test",
+                Set.of("gpt-4o", "gemini")).block();
+
+        assertThat(record.allowedModels()).containsExactlyInAnyOrder("gpt-4o", "gemini");
+    }
+
+    @Test
+    void shouldReconcileAccountCacheFromStore() {
+        // 审查 S2：账户缓存无跨节点失效——其它节点直接写入/删除存储后，
+        // 周期对账应把变更带进本节点缓存。
+        service.register("alice", "password123", "user").block();
+        UserAccount bob = new UserAccount("bob", "hash", "user", "gw-bob",
+                UserAccount.UserLimits.highDefaults(), null, null, "bob@example.com",
+                List.of(), System.currentTimeMillis(), 0, false, null);
+        configStore.save(UserAccountService.CONFIG_TYPE, "bob",
+                new UserAccountCodec(new ObjectMapper(), passwordService).toJsonForStorage(bob)).block();
+
+        service.reconcileAccountCache();
+
+        assertThat(service.findByUsernameSync("bob")).isNotNull();
+        assertThat(service.findByUsernameSync("bob").email()).isEqualTo("bob@example.com");
+    }
+
     // ─── register ───
 
     @Test

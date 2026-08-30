@@ -32,6 +32,12 @@ final class DirtyAccountFlushBuffer {
     private final UserAccountCodec accountCodec;
     private final ConcurrentHashMap<String, UserAccount> dirtyAccounts = new ConcurrentHashMap<>();
 
+    /**
+     * 已删除用户墓碑：删除与 in-flight flush 并发时（审查 D5），flush 在保存前
+     * 检查该标记，避免把已删账户写回存储。窗口从 load→save 收敛为 check→save。
+     */
+    private final Set<String> deletedUsernames = ConcurrentHashMap.newKeySet();
+
     DirtyAccountFlushBuffer(ConfigStore configStore,
                             ObjectMapper objectMapper,
                             PasswordService passwordService) {
@@ -57,8 +63,20 @@ final class DirtyAccountFlushBuffer {
         }
     }
 
+    void markDeleted(String username) {
+        if (username != null) {
+            deletedUsernames.add(username);
+            dirtyAccounts.remove(username);
+        }
+    }
+
+    boolean isMarkedDeleted(String username) {
+        return username != null && deletedUsernames.contains(username);
+    }
+
     void resetForTests() {
         dirtyAccounts.clear();
+        deletedUsernames.clear();
     }
 
     @PreDestroy
@@ -72,7 +90,7 @@ final class DirtyAccountFlushBuffer {
         flushDirtyAccounts(false);
     }
 
-    private void flushDirtyAccounts(boolean waitForCompletion) {
+    void flushDirtyAccounts(boolean waitForCompletion) {
         List<Map.Entry<String, UserAccount>> toFlush = new ArrayList<>(dirtyAccounts.entrySet());
         for (Map.Entry<String, UserAccount> entry : toFlush) {
             Mono<Void> flush = flushDirtyAccount(entry.getKey(), entry.getValue());
@@ -95,6 +113,10 @@ final class DirtyAccountFlushBuffer {
                 .mapNotNull(accountCodec::fromJson)
                 .switchIfEmpty(Mono.empty())
                 .flatMap(current -> {
+                    if (deletedUsernames.contains(username)) {
+                        // 用户已删除：不得把账户写回存储（D5）
+                        return Mono.empty();
+                    }
                     UserAccount merged = mergeUsageMetadata(current, snapshot);
                     return configStore.save(UserAccountService.CONFIG_TYPE, username, accountCodec.toJsonForStorage(merged));
                 })

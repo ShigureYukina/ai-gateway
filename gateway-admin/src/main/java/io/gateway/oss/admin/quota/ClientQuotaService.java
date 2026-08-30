@@ -89,8 +89,18 @@ public class ClientQuotaService implements io.gateway.oss.core.contract.QuotaSer
         if (result.monthly() < 0) {
             log.warn("usage_monthly_quota_exceeded_during_record clientId={}", principal.clientId());
         }
-        dailyUsageCache.put(dailyKey(principal.clientId(), now), result.daily() >= 0 ? result.daily() : 0);
-        monthlyUsageCache.put(monthlyKey(principal.clientId(), now), result.monthly() >= 0 ? result.monthly() : 0);
+        // 被拒时使预检查缓存失效（下次检查回源真实累计值）：put 0 会把预检查
+        // 毒化为"未使用"，让已超限客户端在缓存 TTL 内继续通过预检查打到上游。
+        if (result.daily() >= 0) {
+            dailyUsageCache.put(dailyKey(principal.clientId(), now), result.daily());
+        } else {
+            dailyUsageCache.invalidate(dailyKey(principal.clientId(), now));
+        }
+        if (result.monthly() >= 0) {
+            monthlyUsageCache.put(monthlyKey(principal.clientId(), now), result.monthly());
+        } else {
+            monthlyUsageCache.invalidate(monthlyKey(principal.clientId(), now));
+        }
     }
 
     public void recordStreamingUsageOnSuccess(ClientPrincipal principal,
@@ -106,8 +116,18 @@ public class ClientQuotaService implements io.gateway.oss.core.contract.QuotaSer
         if (result.monthly() < 0) {
             log.warn("streaming_usage_monthly_quota_exceeded_during_record clientId={}", principal.clientId());
         }
-        dailyUsageCache.put(dailyKey(principal.clientId(), now), result.daily() >= 0 ? result.daily() : 0);
-        monthlyUsageCache.put(monthlyKey(principal.clientId(), now), result.monthly() >= 0 ? result.monthly() : 0);
+        // 被拒时使预检查缓存失效（下次检查回源真实累计值）：put 0 会把预检查
+        // 毒化为"未使用"，让已超限客户端在缓存 TTL 内继续通过预检查打到上游。
+        if (result.daily() >= 0) {
+            dailyUsageCache.put(dailyKey(principal.clientId(), now), result.daily());
+        } else {
+            dailyUsageCache.invalidate(dailyKey(principal.clientId(), now));
+        }
+        if (result.monthly() >= 0) {
+            monthlyUsageCache.put(monthlyKey(principal.clientId(), now), result.monthly());
+        } else {
+            monthlyUsageCache.invalidate(monthlyKey(principal.clientId(), now));
+        }
     }
 
     public long currentDailyUsage(String clientId, Instant now) {

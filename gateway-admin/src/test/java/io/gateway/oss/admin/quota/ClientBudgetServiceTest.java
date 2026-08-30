@@ -107,6 +107,27 @@ class ClientBudgetServiceTest {
         assertEquals(new BigDecimal("0.010000"), costStore.currentDailyCost(principal.clientId(), now));
     }
 
+    @Test
+    void shouldKeepDailyBudgetEnforcedAfterRejectedRecord() {
+        InMemoryClientCostStore costStore = new InMemoryClientCostStore();
+        GatewayProperties properties = new GatewayProperties();
+        properties.getPricing().getDefault().setUnitPrice(new BigDecimal("0.0002"));
+
+        ClientPrincipal principal = principalWithDailyCost("0.0010");
+        Instant now = Instant.parse("2026-04-27T03:00:00Z");
+        costStore.addDailyCost(principal.clientId(), new BigDecimal("0.0010"), now); // 已达预算
+        ClientBudgetService budgetService = new ClientBudgetService(costStore, new CostCalculator(properties));
+
+        // 记账被拒（超出预算）
+        budgetService.recordCostOnSuccess(principal, request(), route(), 50L, now);
+
+        // 回归口径（审查 P2-2）：拒绝后预检查必须继续拦截，
+        // 原实现把预检查缓存毒化为 0，下一次检查会放行。
+        GatewayException error = assertThrows(GatewayException.class,
+                () -> budgetService.checkDailyBudget(principal, now));
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, error.getStatus());
+    }
+
     private ClientPrincipal principalWithDailyCost(String budget) {
         return principalWithBudgets(budget, null);
     }

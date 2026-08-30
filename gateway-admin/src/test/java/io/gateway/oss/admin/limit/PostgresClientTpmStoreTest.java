@@ -31,7 +31,7 @@ class PostgresClientTpmStoreTest {
         // Single SQL with RETURNING — query() returns the new total directly
         PostgresClientTpmStore store = createStore();
         when(jdbc.query(anyString(), any(ResultSetExtractor.class), anyString(), anyString(), anyString(),
-                anyLong(), anyLong(), anyLong(), anyLong()))
+                anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), anyLong()))
                 .thenReturn(50L);
 
         long result = store.reserve("client-1", 10, 100, now);
@@ -40,7 +40,14 @@ class PostgresClientTpmStoreTest {
         verify(jdbc).query(
                 argThat(sql -> sql.contains("INSERT INTO client_tpm_usage") && sql.contains("RETURNING tokens")),
                 any(ResultSetExtractor.class),
-                eq("gw"), eq("client-1"), anyString(), eq(10L), eq(10L), eq(10L), eq(100L));
+                eq("gw"), eq("client-1"), anyString(),
+                eq(10L), eq(10L), eq(100L), eq(10L), eq(10L), eq(100L));
+        // 审查 P2-3：INSERT 路径带限额守卫（SELECT ... WHERE ? <= ?）
+        verify(jdbc).query(
+                argThat(sql -> sql.contains("SELECT ?, ?, ?, ? WHERE ? <= ?") && sql.contains("RETURNING tokens")),
+                any(ResultSetExtractor.class),
+                eq("gw"), eq("client-1"), anyString(),
+                eq(10L), eq(10L), eq(100L), eq(10L), eq(10L), eq(100L));
         verify(jdbc, never()).update(anyString(), any(), any(), any());
     }
 
@@ -49,7 +56,7 @@ class PostgresClientTpmStoreTest {
         // RETURNING returns null (WHERE clause in DO UPDATE prevents the update)
         PostgresClientTpmStore store = createStore();
         when(jdbc.query(anyString(), any(ResultSetExtractor.class), anyString(), anyString(), anyString(),
-                anyLong(), anyLong(), anyLong(), anyLong()))
+                anyLong(), anyLong(), anyLong(), anyLong(), anyLong(), anyLong()))
                 .thenReturn(null);
 
         long result = store.reserve("client-1", 10, 100, now);
