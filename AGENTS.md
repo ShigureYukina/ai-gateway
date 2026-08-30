@@ -50,6 +50,7 @@
 - **前端改动默认验证：** `cd frontend && npm run build`
 - 必要时补充：`cd frontend && npm run lint`
 - 需要跑单测时优先聚焦到模块与测试类，不做无差别全量测试。
+- **批量修复或多类改动收尾时**，必须用一键全量门禁验证：`bash scripts/verify-all.sh`（后端三模块全量 `./mvnw test` + 前端 lint/test/build）。只跑聚焦清单会让坏测试潜伏（2026-08-30 教训）。
 - 涉及模块边界调整时，额外执行：
   ```bash
   ./mvnw -pl gateway-core -q -DskipTests compile

@@ -2,10 +2,11 @@ package io.gateway.oss.admin.webhook;
 
 import io.gateway.oss.admin.entity.WebhookEndpointEntity;
 import io.gateway.oss.core.error.GatewayException;
+import io.gateway.oss.core.security.BaseUrlValidator;
 import io.gateway.oss.admin.repository.WebhookEndpointRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,8 +31,13 @@ class WebhookEndpointServiceTest {
     @Mock
     private WebhookEndpointRepository webhookEndpointRepository;
 
-    @InjectMocks
     private WebhookEndpointService webhookEndpointService;
+
+    @BeforeEach
+    void setUp() {
+        // 存量用例关注实体/视图映射，使用宽松校验器（blockInternalUrls=false 直接放行，无 DNS 查询）
+        webhookEndpointService = new WebhookEndpointService(webhookEndpointRepository, new BaseUrlValidator(false));
+    }
 
     @Test
     void listShouldReturnViewsFromRepository() {
@@ -149,6 +156,46 @@ class WebhookEndpointServiceTest {
         assertEquals(List.of("*"), nullResult);
         assertEquals(List.of("*"), emptyResult);
         assertEquals(List.of("alert.triggered", "alert.failed"), distinctResult);
+    }
+
+    @Test
+    void createShouldRejectInternalUrlWhenBlockingEnabled() {
+        // 审查 F9：webhook URL 与 provider baseUrl 同权责面，SSRF 校验默认开启
+        WebhookEndpointService strictService = new WebhookEndpointService(
+                webhookEndpointRepository, new BaseUrlValidator(true));
+
+        GatewayException exception = assertThrows(GatewayException.class,
+                () -> strictService.create(command(
+                        "endpoint-ssrf", "http://169.254.169.254/hook", "secret-a", true,
+                        List.of("alert.triggered"), 3, 5000
+                )));
+
+        assertEquals(400, exception.getStatus().value());
+        assertEquals("invalid_base_url", exception.getCode());
+        verify(webhookEndpointRepository, never()).save(any(WebhookEndpointEntity.class));
+    }
+
+    @Test
+    void createShouldAcceptPublicIpUrlWhenBlockingEnabled() {
+        // 公网 IP 字面量不经 DNS，确定性通过严格校验
+        WebhookEndpointService strictService = new WebhookEndpointService(
+                webhookEndpointRepository, new BaseUrlValidator(true));
+        when(webhookEndpointRepository.save(any(WebhookEndpointEntity.class))).thenAnswer(invocation -> {
+            WebhookEndpointEntity entity = invocation.getArgument(0);
+            entity.setId(11L);
+            entity.setCreatedAt(Instant.now());
+            entity.setUpdatedAt(Instant.now());
+            return entity;
+        });
+
+        Object result = strictService.create(command(
+                "endpoint-public", "https://8.8.8.8/hook", "secret-a", true,
+                List.of("alert.triggered"), 3, 5000
+        ));
+
+        assertEquals(11L, invokeAccessor(result, "id"));
+        assertEquals("https://8.8.8.8/hook", invokeAccessor(result, "url"));
+        verify(webhookEndpointRepository).save(any(WebhookEndpointEntity.class));
     }
 
     @Test

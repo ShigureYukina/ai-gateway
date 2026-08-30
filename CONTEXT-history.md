@@ -7,6 +7,26 @@
 
 ## 最近完成（2026-06-03 ~ 2026-06-09）
 
+### 最新完成（2026-08-30 — 测试健康度专项：坏测试清零 + 覆盖补齐 + 一键全量门禁）
+
+背景：用户提问"项目目前的测试是否存在问题或覆盖不全"，全量审计发现当前 HEAD 全量套件是红的，随后按"修坏测试 → 修前端 → 补覆盖 → 固化全量门禁"顺序收口。
+
+- **修复 6 个坏测试（第 3 批改动遗留 + 存量）**
+  - WebhookEndpointServiceTest：F9 给 `WebhookEndpointService` 构造器加 `BaseUrlValidator` 后测试未同步（`@InjectMocks` 注入 null）→ NPE ×2；改为显式构造（存量用例用宽松校验器），并新增 F9 行为用例 ×2（严格模式下拒绝内网 IP、放行公网 IP 字面量，7→9 个用例）
+  - C1 异步化竞态：RouteResilienceTrackerTest ×2 + RouteLoadBalancerTest ×1 稳定失败、UpstreamChatClientTest ×1 偶发——`recordSuccess/recordRetryableFailure` 变 fire-and-forget 后"记录→立刻断言"失效。`RouteResilienceTracker` 新增测试用 `Scheduler` 注入构造器（生产默认 boundedElastic 不变），3 个测试类传 `Schedulers.immediate()` 同步落状态
+- **修复前端 6 个存量失败（自 initial commit 即坏，此前前端验证只跑 build/lint 未跑 vitest）**
+  - WebhooksPage ×5：测试 mock `webhooks.list` 返回裸数组，组件读 `response.endpoints` 得 undefined 渲染崩溃（真实 client 与后端 controller 均返回 `{generatedAt, endpoints}`，组件正确、测试 mock 过时）→ mock 补 `listResponse()` 包装
+  - LoginPage ×1：`new Error()` 空 message 时 `error.message` 为空串，既不显示错误也不落兜底文案 → 组件修复为 `error instanceof Error && error.message ? ... : t.login.failed`
+- **修复全量运行暴露的 4 类 flaky（负载敏感，单跑难复现）**
+  - BatchFlusherTest：100–200ms 墙钟等待 ×9 处放宽至 5s（线程调度同步而非契约断言）
+  - AdminWebhookControllerTest：3s awaitility 窗口放宽至 10s（C3 webhook 落库异步化后负载下偶发不够）
+  - 测试 JWT 过期 flake：基类 `access-expiration=5s` 在负载下用例中途过期 → 401 假红；8 个测试属性块统一提至 300s（过期用例均用独立 `shortLivedJwtService`，不受影响）
+  - WebTestClient 5s 默认响应超时偶发不足（`spring.test.webtestclient.response-timeout` 属性实测未生效）：两个集成测试基类 @BeforeEach 统一 `mutate().responseTimeout(30s)`，其余 9 个自包含测试类（含 IT 基类 IntegrationTestBase，覆盖 failsafe 的 IT 子类）逐一注入同一 mutate
+- **F11 补充修复（补测试时发现）**：`b0==0` 与 CGNAT 100.64/10 原先只写在 `isBlockedIpv4`，仅对 IPv4-mapped IPv6 生效，裸 IPv4 `http://0.1.2.3/` 可穿透；`checkResolvedAddress` 对裸 IPv4 统一走 `isBlockedIpv4`，新增 4 个用例
+- **补齐第 3 批安全行为单测**：F4 `AuthLoginControllerRefreshTest` ×3（tokenVersion 不匹配 → 401 token_revoked、匹配 → 新 refresh token 绑定当前版本、已吊销 → 拒绝且不查账户）；F5 `LoginRateLimiterTest` IP 维度 ×6；S1 `UserApiKeyServiceTest` ×5（交集收敛语义）；P2-2 `ClientQuotaServiceTest` 回归 ×1（拒绝后缓存 invalidate 而非 put(0) 毒化）
+- **新增 `scripts/verify-all.sh` 一键全量门禁**（后端三模块 `./mvnw test` + 前端 lint/test/build），README 验证层次表新增"本地全量单测"层级
+- 教训沉淀：此前第 3 批"聚焦测试全绿"清单未覆盖 WebhookEndpointServiceTest / RouteResilienceTrackerTest 等类，全量套件从未在本地一键跑通；CI（`.github/workflows/ci.yml`）已配置但项目未连远端、从未执行。最终连续多轮 ALL GREEN（core 625 + admin 604 + bootstrap 16 = 1245，前端 124），此后批量修复的验证门禁以 verify-all 为准
+
 ### 最新完成（2026-08-30 — 审查修复第 3 批，P1 全部收口）
 
 - **事件循环阻塞清零（C1-C5）**：C1 RouteResilienceTracker.record* 异步化（fire-and-forget boundedElastic，每请求热路径不再阻塞；韧性状态允许毫秒级陈旧）；C2 登录链路 Mono.defer + subscribeOn（限速/BCrypt/静态回退全移出事件循环）；C3 webhook 投递结果 JPA 落库异步化；C4 探活写回补 subscribeOn；C5 AdminDashboard/InternalSystemStatus/InternalProviderState/InternalUsageSummary 共 10 个同步端点 Mono.fromCallable 化

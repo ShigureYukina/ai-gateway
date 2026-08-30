@@ -139,6 +139,9 @@ class ChatCompletionsControllerTest {
 
     @BeforeEach
     void setUp() {
+        // 全量套件并行负载下 5s 默认响应超时偶发不够，统一放宽到 30s
+        webTestClient = webTestClient.mutate().responseTimeout(java.time.Duration.ofSeconds(30)).build();
+
         reset(upstreamChatClient);
         reset(quotaService);
         reset(budgetService);

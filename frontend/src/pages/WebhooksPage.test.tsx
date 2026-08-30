@@ -37,6 +37,11 @@ function createWebhook(overrides: Partial<WebhookEndpoint> = {}): WebhookEndpoin
   }
 }
 
+// 与 GET /admin/webhooks 真实响应一致：{ generatedAt, endpoints }
+function listResponse(endpoints: WebhookEndpoint[]) {
+  return { generatedAt: new Date().toISOString(), endpoints }
+}
+
 beforeEach(() => {
   localStorage.setItem('gateway-language', 'en')
   mockList.mockReset()
@@ -47,10 +52,10 @@ beforeEach(() => {
 
 describe('WebhooksPage', () => {
   it('loads and renders webhook list', async () => {
-    mockList.mockResolvedValue([
+    mockList.mockResolvedValue(listResponse([
       createWebhook(),
       createWebhook({ id: 'wh_2', name: 'audit-fallback', enabled: false, events: ['config.changed'] }),
-    ])
+    ]))
 
     renderWithProviders(<WebhooksPage />)
 
@@ -64,8 +69,8 @@ describe('WebhooksPage', () => {
   it('creates a webhook successfully', async () => {
     const user = userEvent.setup()
     mockList
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([createWebhook({ hmacSecret: undefined })])
+      .mockResolvedValueOnce(listResponse([]))
+      .mockResolvedValueOnce(listResponse([createWebhook({ hmacSecret: undefined })]))
     mockCreate.mockResolvedValue(createWebhook({ hmacSecret: undefined }))
 
     renderWithProviders(<WebhooksPage />)
@@ -94,8 +99,8 @@ describe('WebhooksPage', () => {
   it('updates a webhook successfully', async () => {
     const user = userEvent.setup()
     mockList
-      .mockResolvedValueOnce([createWebhook()])
-      .mockResolvedValueOnce([createWebhook({ url: 'https://example.com/webhooks/alerts-v2', enabled: false })])
+      .mockResolvedValueOnce(listResponse([createWebhook()]))
+      .mockResolvedValueOnce(listResponse([createWebhook({ url: 'https://example.com/webhooks/alerts-v2', enabled: false })]))
     mockUpdate.mockResolvedValue(createWebhook({ url: 'https://example.com/webhooks/alerts-v2', enabled: false }))
 
     renderWithProviders(<WebhooksPage />)
@@ -125,8 +130,8 @@ describe('WebhooksPage', () => {
     const user = userEvent.setup()
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     mockList
-      .mockResolvedValueOnce([createWebhook()])
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(listResponse([createWebhook()]))
+      .mockResolvedValueOnce(listResponse([]))
     mockRemove.mockResolvedValue(undefined)
 
     renderWithProviders(<WebhooksPage />)
@@ -144,7 +149,7 @@ describe('WebhooksPage', () => {
   })
 
   it('shows empty state when no webhooks exist', async () => {
-    mockList.mockResolvedValue([])
+    mockList.mockResolvedValue(listResponse([]))
 
     renderWithProviders(<WebhooksPage />)
 

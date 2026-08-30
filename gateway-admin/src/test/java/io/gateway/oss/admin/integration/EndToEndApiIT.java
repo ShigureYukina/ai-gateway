@@ -27,7 +27,7 @@ import static org.mockito.Mockito.when;
  * 端到端 API 集成测试，覆盖所有公开 / 内部端点的核心场景。
  */
 @TestPropertySource(properties = {
-        "gateway.auth.jwt.access-expiration=5s",
+        "gateway.auth.jwt.access-expiration=300s",
         "gateway.auth.jwt.refresh-expiration=10s",
         "gateway.routes.gpt-4o-mini.scene="
 })

@@ -127,6 +127,14 @@ public class BaseUrlValidator {
                     "Provider baseUrl resolves to blocked IPv4-mapped IPv6 address (host=" + originalHost + ")");
         }
 
+        // 裸 IPv4 也统一走 isBlockedIpv4，补齐 0/8 与 CGNAT 100.64/10——
+        // 这两段此前只拦 IPv4-mapped IPv6，http://0.1.2.3/ 可穿透校验。
+        if (bytes.length == 4 && isBlockedIpv4(bytes[0], bytes[1], bytes[2], bytes[3])) {
+            throw new GatewayException(HttpStatus.BAD_REQUEST,
+                    "invalid_base_url",
+                    "Provider baseUrl resolves to blocked IPv4 address (host=" + originalHost + ")");
+        }
+
         // Private: 10.x.x.x
         if (bytes.length == 4 && bytes[0] == 10) {
             throw new GatewayException(HttpStatus.BAD_REQUEST,

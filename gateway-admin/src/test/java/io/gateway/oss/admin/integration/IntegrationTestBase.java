@@ -62,6 +62,9 @@ public abstract class IntegrationTestBase extends RedisIntegrationTestSupport {
 
     @BeforeEach
     void enableSyncBatchFlusher() {
+        // 全量套件并行负载下 5s 默认响应超时偶发不够，统一放宽到 30s
+        webTestClient = webTestClient.mutate().responseTimeout(java.time.Duration.ofSeconds(30)).build();
+
         batchFlusher.setSynchronous(true);
     }
 

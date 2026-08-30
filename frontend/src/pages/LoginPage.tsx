@@ -29,7 +29,7 @@ export default function LoginPage() {
       setAuth(res.accessToken, res.refreshToken, username, role)
       navigate(role === 'admin' ? '/' : '/portal/dashboard')
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : t.login.failed)
+      setError(error instanceof Error && error.message ? error.message : t.login.failed)
     } finally {
       setLoading(false)
     }
