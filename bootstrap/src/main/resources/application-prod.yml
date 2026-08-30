@@ -1,0 +1,5 @@
+# 生产环境覆盖（审查 F10）：SSRF 内网地址拦截必须开启。
+# 开发/测试环境的 localhost mock 上游依赖该开关为 false，故仅在 prod 强制开启。
+gateway:
+  security:
+    block-internal-urls: true

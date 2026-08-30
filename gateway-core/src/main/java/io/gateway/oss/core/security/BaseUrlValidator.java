@@ -211,9 +211,10 @@ public class BaseUrlValidator {
     private boolean isBlockedIpv4(byte b0, byte b1, byte b2, byte b3) {
         return b0 == 127
                 || b0 == 10
+                || b0 == 0
+                || (b0 == 100 && (b1 & 0xFF) >= 64 && (b1 & 0xFF) <= 127)
                 || (b0 == (byte) 172 && (b1 & 0xFF) >= 16 && (b1 & 0xFF) <= 31)
                 || (b0 == (byte) 192 && b1 == (byte) 168)
-                || (b0 == (byte) 169 && b1 == (byte) 254)
-                || (b0 == 0 && b1 == 0 && b2 == 0 && b3 == 0);
+                || (b0 == (byte) 169 && b1 == (byte) 254);
     }
 }

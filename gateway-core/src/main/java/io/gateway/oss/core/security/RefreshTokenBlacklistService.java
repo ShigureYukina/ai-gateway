@@ -21,7 +21,6 @@ public class RefreshTokenBlacklistService {
 
     private static final Logger log = LoggerFactory.getLogger(RefreshTokenBlacklistService.class);
     private static final String CONFIG_TYPE = "refresh-token-blacklist";
-    private static final String REDIS_CONSUMED_KEY_PREFIX = "refresh-token-consumed";
 
     private final ConfigStore configStore;
     private final ObjectMapper objectMapper;
@@ -79,7 +78,9 @@ public class RefreshTokenBlacklistService {
     private Mono<Void> saveEntry(String key, BlacklistEntry entry) {
         String json = toJson(entry);
         if (configStore instanceof RedisConfigStore redisConfigStore) {
-            return redisConfigStore.set(redisConsumedKey(key), json, ttl(entry.expiresAt())).then();
+            // 审查 F3：必须写入与 consumeOnce 相同的命名空间键，否则 logout
+            // 写入的键 refresh 的原子消费看不到，Redis 后端下 logout 形同虚设
+            return redisConfigStore.set(redisConfigStore.namespacedKey(CONFIG_TYPE + ":" + key), json, ttl(entry.expiresAt())).then();
         }
         return configStore.save(CONFIG_TYPE, key, json);
     }
@@ -91,7 +92,7 @@ public class RefreshTokenBlacklistService {
 
     private Mono<String> loadEntry(String key) {
         if (configStore instanceof RedisConfigStore redisConfigStore) {
-            return redisConfigStore.get(redisConsumedKey(key))
+            return redisConfigStore.get(redisConfigStore.namespacedKey(CONFIG_TYPE + ":" + key))
                     .switchIfEmpty(configStore.load(CONFIG_TYPE, key));
         }
         return configStore.load(CONFIG_TYPE, key);
@@ -99,7 +100,8 @@ public class RefreshTokenBlacklistService {
 
     private Mono<Void> deleteEntry(String key) {
         if (configStore instanceof RedisConfigStore redisConfigStore) {
-            return redisConfigStore.deleteKey(redisConsumedKey(key)).then(configStore.delete(CONFIG_TYPE, key));
+            return redisConfigStore.deleteKey(redisConfigStore.namespacedKey(CONFIG_TYPE + ":" + key))
+                    .then(configStore.delete(CONFIG_TYPE, key));
         }
         return configStore.delete(CONFIG_TYPE, key);
     }
@@ -114,9 +116,6 @@ public class RefreshTokenBlacklistService {
         return Duration.ofMillis(millis);
     }
 
-    private String redisConsumedKey(String key) {
-        return ((RedisConfigStore) configStore).namespacedKey(REDIS_CONSUMED_KEY_PREFIX + ":" + key);
-    }
 
     private String buildKey(String token) {
         try {

@@ -32,6 +32,9 @@ public class ModelPublicationService {
 
     private static final Logger log = LoggerFactory.getLogger(ModelPublicationService.class);
 
+    private static final java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.locks.ReentrantLock> ALIAS_LOCKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     private final PricingPublicationConfigView gatewayConfigView;
     private final ModelPublicationConfigWriter modelPublicationConfigWriter;
     private final ProviderModelCatalogService providerModelCatalogService;
@@ -67,6 +70,17 @@ public class ModelPublicationService {
                     "upstreamModel not found in provider catalog or configured models: " + upstreamModel));
         }
 
+        // 同一 alias 的并发发布串行化（审查 P2-9）：无锁时，失败方的补偿回滚
+        // 会用旧快照覆盖并发方的成功写入。快照与补偿随订阅在持锁状态下重建。
+        java.util.concurrent.locks.ReentrantLock aliasLock =
+                ALIAS_LOCKS.computeIfAbsent(normalizedAlias, k -> new java.util.concurrent.locks.ReentrantLock());
+        return Mono.defer(() -> {
+            aliasLock.lock();
+            return doPublish(normalizedAlias, provider, upstreamModel).doFinally(sig -> aliasLock.unlock());
+        });
+    }
+
+    private Mono<PublishOutcome> doPublish(String normalizedAlias, String provider, String upstreamModel) {
         boolean created = !gatewayConfigView.getRoutes().containsKey(normalizedAlias);
         String sceneId = normalizedAlias + "-scene";
         String primaryRouteId = normalizedAlias + "-primary";
@@ -139,7 +153,12 @@ public class ModelPublicationService {
                 .onErrorResume(forwardError -> rollBack(compensations)
                         .then(Mono.error(forwardError)))
                 .then(Mono.fromSupplier(() -> new PublishOutcome(created,
-                        buildResponse(normalizedAlias, provider, upstreamModel))));
+                        buildResponse(normalizedAlias, provider, upstreamModel))))
+                // 审查 P2-10：客户端断连取消订阅时补偿已完成的步骤（best-effort：
+                // 取消瞬间仍在途的写可能落地，无法完全避免）。rollBack 排空式
+                // 消费补偿队列，与错误路径天然互斥、不会重复回滚。
+                .doOnCancel(() -> rollBack(compensations)
+                        .subscribe(null, e -> log.warn("publication_cancel_rollback_failed", e)));
     }
 
     private Mono<Void> rollBack(Deque<Supplier<Mono<Void>>> compensations) {

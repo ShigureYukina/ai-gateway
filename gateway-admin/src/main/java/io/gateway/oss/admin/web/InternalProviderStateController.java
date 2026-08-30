@@ -15,6 +15,8 @@ import org.springframework.web.server.ServerWebExchange;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @RestController
 @Validated
@@ -34,21 +36,23 @@ public class InternalProviderStateController {
     }
 
     @GetMapping("/providers/runtime")
-    public ProviderRuntimeSnapshotResponse runtime(
+    public Mono<ProviderRuntimeSnapshotResponse> runtime(
             ServerWebExchange exchange,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
             @RequestParam(name = "provider", required = false) String provider) {
         requireSystemAccess(exchange);
-        Map<String, ProviderRuntimeStateStore.ProviderRuntimeState> all = runtimeStateStore.getAll();
-        return new ProviderRuntimeSnapshotResponse(Instant.now(), filter(all, provider));
+        return Mono.fromCallable(() -> {
+            Map<String, ProviderRuntimeStateStore.ProviderRuntimeState> all = runtimeStateStore.getAll();
+            return new ProviderRuntimeSnapshotResponse(Instant.now(), filter(all, provider));
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     @GetMapping("/providers/discovery")
-    public ProviderDiscoveryService.DiscoverySnapshot discovery(
+    public Mono<ProviderDiscoveryService.DiscoverySnapshot> discovery(
             ServerWebExchange exchange,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader) {
         requireSystemAccess(exchange);
-        return discoveryService.getSnapshot();
+        return Mono.fromCallable(() -> discoveryService.getSnapshot()).subscribeOn(Schedulers.boundedElastic());
     }
 
     private void requireSystemAccess(ServerWebExchange exchange) {

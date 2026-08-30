@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 
@@ -70,23 +71,39 @@ public class AuthLoginController {
     public Mono<ResponseEntity<LoginResponse>> login(@Valid @RequestBody LoginRequest request,
                                                      ServerWebExchange exchange) {
         requireAuthEnabled();
-        loginRateLimiter.check(request.username());
+        String clientIp = resolveClientIp(exchange);
 
-        return userAccountService.authenticate(request.username(), request.password())
-                .map(account -> {
-                    loginRateLimiter.clear(request.username());
-                    List<String> scopes = authSupport.resolveScopes(account.username());
-                    String accessToken = jwtService.generateAccessToken(account.username(), account.username(), scopes, account.role(), account.tokenVersion());
-                    String refreshToken = jwtService.generateRefreshToken(account.username());
-                    return ResponseEntity.ok(new LoginResponse(accessToken, refreshToken, "Bearer"));
-                })
-                .onErrorResume(GatewayException.class, ex -> {
-                    if ("invalid_credentials".equals(ex.getCode())) {
-                        loginRateLimiter.recordFailure(request.username());
-                        return loginFromStaticConfig(request);
-                    }
-                    return Mono.error(ex);
-                });
+        // 整条登录链订阅在 boundedElastic 上：LoginRateLimiter（Redis/内存）、
+        // authenticate 与静态配置回退里的同步存储调用、BCrypt 校验都不再占用
+        // 事件循环线程（审查 C2）。
+        return Mono.defer(() -> {
+            loginRateLimiter.checkIp(clientIp);
+            loginRateLimiter.check(request.username());
+
+            return userAccountService.authenticate(request.username(), request.password())
+                    .map(account -> {
+                        loginRateLimiter.clear(request.username());
+                        loginRateLimiter.clearIp(clientIp);
+                        List<String> scopes = authSupport.resolveScopes(account.username());
+                        String accessToken = jwtService.generateAccessToken(account.username(), account.username(), scopes, account.role(), account.tokenVersion());
+                        String refreshToken = jwtService.generateRefreshToken(account.username(), account.tokenVersion());
+                        return ResponseEntity.ok(new LoginResponse(accessToken, refreshToken, "Bearer"));
+                    })
+                    .onErrorResume(GatewayException.class, ex -> {
+                        if ("invalid_credentials".equals(ex.getCode())) {
+                            loginRateLimiter.recordFailure(request.username());
+                            loginRateLimiter.recordIpFailure(clientIp);
+                            return Mono.defer(() -> loginFromStaticConfig(request))
+                                    .subscribeOn(Schedulers.boundedElastic());
+                        }
+                        return Mono.error(ex);
+                    });
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private String resolveClientIp(ServerWebExchange exchange) {
+        java.net.InetSocketAddress remote = exchange.getRequest().getRemoteAddress();
+        return remote != null && remote.getAddress() != null ? remote.getAddress().getHostAddress() : null;
     }
 
     /**
@@ -113,7 +130,7 @@ public class AuthLoginController {
         List<String> scopes = List.copyOf(clientConfig.getAllowedModels());
         String role = userConfig.getRole() != null ? userConfig.getRole() : "user";
         String accessToken = jwtService.generateAccessToken(request.username(), clientId, scopes, role);
-        String refreshToken = jwtService.generateRefreshToken(request.username(), clientId);
+        String refreshToken = jwtService.generateRefreshToken(request.username(), clientId, 0);
         return Mono.just(ResponseEntity.ok(new LoginResponse(accessToken, refreshToken, "Bearer")));
     }
 
@@ -148,9 +165,14 @@ public class AuthLoginController {
                                 if (account.frozen()) {
                                     throw new GatewayException(HttpStatus.FORBIDDEN, "account_frozen", "Account is frozen");
                                 }
+                                // 审查 F4：refresh token 绑定签发时的 tokenVersion，
+                                // 改密/重置/降权后旧 refresh token 立即失效
+                                if (jwtService.extractTokenVersion(claims) != account.tokenVersion()) {
+                                    throw new GatewayException(HttpStatus.UNAUTHORIZED, "token_revoked", "Refresh token has been invalidated");
+                                }
                                 List<String> scopes = authSupport.resolveScopes(clientId);
                                 String accessToken = jwtService.generateAccessToken(account.username(), clientId, scopes, account.role(), account.tokenVersion());
-                                String newRefreshToken = jwtService.generateRefreshToken(account.username(), clientId);
+                                String newRefreshToken = jwtService.generateRefreshToken(account.username(), clientId, account.tokenVersion());
                                 return ResponseEntity.ok(new LoginResponse(accessToken, newRefreshToken, "Bearer"));
                             })
                             .switchIfEmpty(Mono.fromCallable(() -> {
@@ -173,7 +195,7 @@ public class AuthLoginController {
                                     role = userConfig.getRole();
                                 }
                                 String accessToken = jwtService.generateAccessToken(username, effectiveClientId, scopes, role, 0);
-                                String newRefreshToken = jwtService.generateRefreshToken(username, effectiveClientId);
+                                String newRefreshToken = jwtService.generateRefreshToken(username, effectiveClientId, jwtService.extractTokenVersion(claims));
                                 return ResponseEntity.ok(new LoginResponse(accessToken, newRefreshToken, "Bearer"));
                             }));
                 });
@@ -236,7 +258,7 @@ public class AuthLoginController {
                 .map(account -> {
                     List<String> scopes = authSupport.resolveScopes(account.username());
                     String accessToken = jwtService.generateAccessToken(account.username(), account.username(), scopes, account.role());
-                    String refreshToken = jwtService.generateRefreshToken(account.username());
+                    String refreshToken = jwtService.generateRefreshToken(account.username(), account.tokenVersion());
                     return ResponseEntity.ok(new RegisterResponse(accessToken, refreshToken, "Bearer", account.apiKey()));
                 });
     }

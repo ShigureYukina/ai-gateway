@@ -619,7 +619,7 @@ class AuthControllerTest {
                 .expectBody()
                 .jsonPath("$.code").isEqualTo("invalid_token");
 
-        String refreshToken = jwtService.generateRefreshToken("demo-client-key");
+        String refreshToken = jwtService.generateRefreshToken("demo-client-key", 0);
         webTestClient.get().uri("/auth/me")
                 .header("Authorization", "Bearer " + refreshToken)
                 .exchange()
@@ -668,7 +668,7 @@ class AuthControllerTest {
                 .expectBody()
                 .jsonPath("$.code").isEqualTo("invalid_token");
 
-        String refreshToken = jwtService.generateRefreshToken("demo-client-key");
+        String refreshToken = jwtService.generateRefreshToken("demo-client-key", 0);
         webTestClient.get().uri("/auth/me")
                 .header("Authorization", "Bearer " + refreshToken)
                 .exchange()
