@@ -10,6 +10,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# dorny/test-reporter 需要 checks:write 才能创建 check run 并发布注解，
+# 缺省 GITHUB_TOKEN 只有 read，会在 Publish Test Results 步骤 403
+permissions:
+  checks: write
+  contents: read
+  pull-requests: write
+
 jobs:
   test-core:
     runs-on: ubuntu-latest
@@ -45,6 +52,23 @@ jobs:
         run: ./mvnw -pl gateway-admin -am -q test
       - name: Integration tests (gateway-admin)
         run: ./mvnw -pl gateway-admin -am failsafe:integration-test failsafe:verify
+      - name: Print integration test failures
+        if: failure()
+        run: |
+          for f in gateway-admin/target/failsafe-reports/*.txt gateway-core/target/failsafe-reports/*.txt; do
+            [ -f "$f" ] || continue
+            echo "===== $f ====="
+            grep -E "Tests run|<<< (FAILURE|ERROR)!|Caused by" "$f" | head -25
+          done
+      - name: Upload integration test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-reports
+          path: |
+            gateway-admin/target/failsafe-reports/
+            gateway-core/target/failsafe-reports/
+          if-no-files-found: ignore
       - name: Publish Test Results
         uses: dorny/test-reporter@v1
         if: always()
