@@ -37,7 +37,7 @@
         <reactor-test.version>3.6.11</reactor-test.version>
         <h2.version>2.2.224</h2.version>
         <checkstyle.version>10.21.2</checkstyle.version>
-        <spotbugs.version>4.9.2.0</spotbugs.version>
+        <spotbugs.version>4.10.4.0</spotbugs.version>
         <jacoco.version>0.8.12</jacoco.version>
     </properties>
 
