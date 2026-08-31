@@ -25,7 +25,7 @@ jobs:
       - name: Integration tests (gateway-core)
         run: ./mvnw -pl gateway-core -am failsafe:integration-test failsafe:verify
       - name: Publish Test Results
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Core Tests
@@ -46,7 +46,7 @@ jobs:
       - name: Integration tests (gateway-admin)
         run: ./mvnw -pl gateway-admin -am failsafe:integration-test failsafe:verify
       - name: Publish Test Results
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Admin Tests
