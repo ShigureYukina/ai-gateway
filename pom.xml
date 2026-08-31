@@ -30,7 +30,7 @@
         <jtokkit.version>1.1.0</jtokkit.version>
         <resilience4j.version>2.2.0</resilience4j.version>
         <jjwt.version>0.12.6</jjwt.version>
-        <springdoc.version>2.6.0</springdoc.version>
+        <springdoc.version>3.1.0</springdoc.version>
         <logstash.version>7.4</logstash.version>
         <caffeine.version>3.1.8</caffeine.version>
         <jackson-module-blackbird.version>2.17.3</jackson-module-blackbird.version>
