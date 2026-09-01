@@ -36,7 +36,7 @@ jobs:
         if: always()
         with:
           name: Core Tests
-          path: 'gateway-core/target/surefire-reports/*.xml,gateway-core/target/failsafe-reports/*.xml'
+          path: 'gateway-core/target/surefire-reports/TEST-*.xml,gateway-core/target/failsafe-reports/TEST-*.xml'
           reporter: java-junit
 
   test-admin:
@@ -51,15 +51,23 @@ jobs:
       - name: Compile & test (gateway-admin)
         run: ./mvnw -pl gateway-admin -am -q test
       - name: Integration tests (gateway-admin)
-        run: ./mvnw -pl gateway-admin -am failsafe:integration-test failsafe:verify
+        run: |
+          ./mvnw -pl gateway-admin -am failsafe:integration-test failsafe:verify 2>&1 | tee /tmp/it-admin.log
+          exit ${PIPESTATUS[0]}
       - name: Print integration test failures
         if: failure()
         run: |
+          echo "===== failsafe-reports 目录清单 ====="
+          ls -la gateway-admin/target/failsafe-reports/ 2>/dev/null || echo "(不存在)"
+          ls -la gateway-core/target/failsafe-reports/ 2>/dev/null || echo "(不存在)"
+          echo "===== 报告摘要 ====="
           for f in gateway-admin/target/failsafe-reports/*.txt gateway-core/target/failsafe-reports/*.txt; do
             [ -f "$f" ] || continue
-            echo "===== $f ====="
+            echo "--- $f ---"
             grep -E "Tests run|<<< (FAILURE|ERROR)!|Caused by" "$f" | head -25
           done
+          echo "===== maven 日志尾部（最后 100 行）====="
+          tail -100 /tmp/it-admin.log
       - name: Upload integration test reports
         if: failure()
         uses: actions/upload-artifact@v4
@@ -68,13 +76,14 @@ jobs:
           path: |
             gateway-admin/target/failsafe-reports/
             gateway-core/target/failsafe-reports/
+            /tmp/it-admin.log
           if-no-files-found: ignore
       - name: Publish Test Results
         uses: dorny/test-reporter@v1
         if: always()
         with:
           name: Admin Tests
-          path: 'gateway-admin/target/surefire-reports/*.xml,gateway-admin/target/failsafe-reports/*.xml'
+          path: 'gateway-admin/target/surefire-reports/TEST-*.xml,gateway-admin/target/failsafe-reports/TEST-*.xml'
           reporter: java-junit
 
   frontend:
