@@ -50,9 +50,13 @@ jobs:
           cache: maven
       - name: Compile & test (gateway-admin)
         run: ./mvnw -pl gateway-admin -am -q test
+      - name: Install reactor modules for ITs
+        # failsafe:integration-test 作为直接目标调用时不从 reactor 解析模块依赖，
+        # 必须先把根 POM 与 gateway-core 装进本地仓库（与本地 verify-all 同源问题）
+        run: ./mvnw -pl gateway-admin -am install -DskipTests -q
       - name: Integration tests (gateway-admin)
         run: |
-          ./mvnw -pl gateway-admin -am failsafe:integration-test failsafe:verify 2>&1 | tee /tmp/it-admin.log
+          ./mvnw -pl gateway-admin failsafe:integration-test failsafe:verify 2>&1 | tee /tmp/it-admin.log
           exit ${PIPESTATUS[0]}
       - name: Print integration test failures
         if: failure()
