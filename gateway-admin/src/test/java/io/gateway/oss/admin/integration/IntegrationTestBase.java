@@ -22,6 +22,9 @@ import java.util.Map;
 @ActiveProfiles({"test", "test-redis"})
 @TestPropertySource(properties = {
         "gateway.auth.enabled=true",
+        // IT 的用例意图是"自注册用户可直接调用"，默认 restricted 模式会给注册用户
+        // 套上注册模板 client 配置（allowedModels 为空 → 任何模型 403 forbidden_model）
+        "gateway.auth.registration-mode=open",
         "gateway.auth.jwt.secret=super-secret-key-that-is-at-least-32-chars",
         "gateway.auth.jwt.access-expiration=30s",
         "gateway.auth.jwt.refresh-expiration=60s",
