@@ -29,7 +29,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
@@ -42,15 +41,21 @@ abstract class RedisIntegrationTestSupport {
     private static final DockerImageName POSTGRES_IMAGE = DockerImageName.parse("postgres:14");
     private static final DockerImageName REDIS_IMAGE = DockerImageName.parse("redis:7");
 
-    @Container
+    // 单例容器模式：容器在套件级只启停一次，避免"按类启停 + Spring 上下文缓存
+    // + 映射端口回摆"导致的陈旧连接竞态（CI 上曾表现为 FLUSHALL 60s 超时与
+    // Hikari 连接被拒）。测试间隔离由 truncatePgTables/flushRedis 在数据层完成。
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(POSTGRES_IMAGE)
             .withDatabaseName("llm_gateway")
             .withUsername("llm_user")
             .withPassword("llm_password");
 
-    @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>(REDIS_IMAGE)
             .withExposedPorts(6379);
+
+    static {
+        POSTGRES.start();
+        REDIS.start();
+    }
 
     @DynamicPropertySource
     static void registerContainerProperties(DynamicPropertyRegistry registry) {
