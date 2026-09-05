@@ -149,7 +149,9 @@
                     <version>3.2.5</version>
                     <configuration>
                         <reuseForks>true</reuseForks>
-                        <forkCount>1C</forkCount>
+                        <!-- IT 用例起 Testcontainers 容器（postgres+redis），
+                             并发 fork 会在 CI 上同机拉起多套容器导致 fork 崩溃且不写报告，串行执行 -->
+                        <forkCount>1</forkCount>
                     </configuration>
                     <executions>
                         <execution>
