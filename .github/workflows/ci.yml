@@ -131,6 +131,18 @@ jobs:
   regression:
     needs: [test-core, test-admin, frontend, checkstyle]
     runs-on: ubuntu-latest
+    # 网关健康检查聚合 Redis 指示器，配额/TPM 等走 Redis 存储——
+    # 无 Redis 时健康 DOWN 且配额 fail-open（200），与本地跑法对齐必须提供 Redis
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
