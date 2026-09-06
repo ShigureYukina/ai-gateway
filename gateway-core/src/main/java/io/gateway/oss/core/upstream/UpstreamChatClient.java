@@ -19,7 +19,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 
 @Service
@@ -28,7 +27,7 @@ public class UpstreamChatClient {
     private static final Pattern NON_EMPTY_CONTENT_PATTERN = Pattern.compile("\\\"content\\\"\\s*:\\s*\\\"(?:\\\\.|[^\\\"\\\\])+\\\"");
     private static final Pattern TOOL_CALLS_PATTERN = Pattern.compile("\\\"tool_calls\\\"\\s*:\\s*\\[");
 
-    private final Map<String, ChatProviderAdapter> adaptersByType;
+    private final List<ChatProviderAdapter> adapters;
     private final RouteResilienceTracker resilienceTracker;
     private final ProviderKeySelector providerKeySelector;
     private final ProviderKeyResilienceTracker providerKeyResilienceTracker;
@@ -42,16 +41,9 @@ public class UpstreamChatClient {
                               ProviderKeyResilienceTracker providerKeyResilienceTracker,
                               RouteSelector routeSelector,
                               Resilience4jCircuitBreakerService resilience4jService) {
-        this.adaptersByType = adapters.stream()
-                // providerType 为 null/blank 的 adapter 无法路由（如测试中未打桩的 mock），
-                // 跳过以避免 toUnmodifiableMap 因 null key 构建失败
-                .filter(adapter -> adapter != null
-                        && adapter.providerType() != null
-                        && !adapter.providerType().isBlank())
-                .collect(java.util.stream.Collectors.toUnmodifiableMap(
-                        ChatProviderAdapter::providerType,
-                        Function.identity()
-                ));
+        // adapter 类型解析按请求动态进行而非构造期建映射：
+        // 构造期快照会在 mock adapter 场景（providerType 晚于构造打桩）漏掉有效 adapter
+        this.adapters = List.copyOf(adapters);
         this.resilienceTracker = resilienceTracker;
         this.providerKeySelector = providerKeySelector;
         this.providerKeyResilienceTracker = providerKeyResilienceTracker;
@@ -395,11 +387,11 @@ public class UpstreamChatClient {
     }
 
     private ChatProviderAdapter adapterFor(ResolvedRoute route) {
-        ChatProviderAdapter adapter = adaptersByType.get(route.providerType());
-        if (adapter == null) {
-            throw new GatewayException(HttpStatus.INTERNAL_SERVER_ERROR, "config_error", "Unsupported provider type: " + route.providerType());
-        }
-        return adapter;
+        return adapters.stream()
+                .filter(adapter -> route.providerType() != null && route.providerType().equals(adapter.providerType()))
+                .findFirst()
+                .orElseThrow(() -> new GatewayException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "config_error", "Unsupported provider type: " + route.providerType()));
     }
 
     private boolean supportsStreaming(ResolvedRoute route) {

@@ -101,7 +101,8 @@ class CoreFlowIT extends IntegrationTestBase {
 
         RequestLogService.RequestLogEntry entry = requestLogService.getByRequestId("req_core_success").block();
         assertThat(entry).isNotNull();
-        assertThat(entry.clientId()).isEqualTo("***");
+        // clientId 脱敏格式：前 3 位 + *** + 尾 2 位
+        assertThat(entry.clientId()).isEqualTo("dem***ey");
         assertThat(entry.model()).isEqualTo("gpt-4o-mini");
         assertThat(entry.provider()).isEqualTo("openai");
         assertThat(entry.routeId()).isEqualTo("openai-primary");
@@ -114,7 +115,7 @@ class CoreFlowIT extends IntegrationTestBase {
         var trace = traceStore.getByRequestId("req_core_success");
         assertThat(trace).isNotNull();
         assertThat(trace.requestId()).isEqualTo("req_core_success");
-        assertThat(trace.clientId()).isEqualTo("***");
+        assertThat(trace.clientId()).isEqualTo("dem***ey");
         assertThat(trace.model()).isEqualTo("gpt-4o-mini");
         assertThat(trace.provider()).isEqualTo("openai");
         assertThat(trace.routeId()).isEqualTo("openai-primary");
@@ -437,8 +438,9 @@ class CoreFlowIT extends IntegrationTestBase {
                 .jsonPath("$.request.clientId").value(v -> assertThat(String.valueOf(v)).contains("***"))
                 .jsonPath("$.trace.requestId").isEqualTo("req_admin_recent")
                 .jsonPath("$.trace.clientId").value(v -> assertThat(String.valueOf(v)).contains("***"))
-                .jsonPath("$.trace.requestBody").value(v -> assertThat(String.valueOf(v)).contains("hello"))
-                .jsonPath("$.trace.responseBody").value(v -> assertThat(String.valueOf(v)).contains("chatcmpl_logged"))
+                // 成功路径的 trace 出于隐私语义不记录请求/响应体（见 CompletionRecorder.captureTrace）
+                .jsonPath("$.trace.requestBody").isEmpty()
+                .jsonPath("$.trace.responseBody").isEmpty()
                 .jsonPath("$.trace.provider").isEqualTo("openai")
                 .jsonPath("$.trace.routeId").isEqualTo("openai-primary");
 
