@@ -248,7 +248,8 @@ class EndToEndApiIT extends IntegrationTestBase {
 
     @Test
     void adminProviders_shouldReturnProvidersWithMaskedApiKey() {
-        String adminAccessToken = jwtService.generateAccessToken("demo-client-key", List.of("gpt-4o-mini"), "admin");
+        // JWT 鉴权按 subject 查账户，必须用真实存在的用户名（demo-client-key 是 clientId）
+        String adminAccessToken = jwtService.generateAccessToken("admin", List.of("gpt-4o-mini"), "admin");
         webTestClient.get()
                 .uri("/admin/providers")
                 .header("Authorization", "Bearer " + adminAccessToken)

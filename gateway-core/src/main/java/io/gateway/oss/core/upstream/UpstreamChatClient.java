@@ -43,6 +43,11 @@ public class UpstreamChatClient {
                               RouteSelector routeSelector,
                               Resilience4jCircuitBreakerService resilience4jService) {
         this.adaptersByType = adapters.stream()
+                // providerType 为 null/blank 的 adapter 无法路由（如测试中未打桩的 mock），
+                // 跳过以避免 toUnmodifiableMap 因 null key 构建失败
+                .filter(adapter -> adapter != null
+                        && adapter.providerType() != null
+                        && !adapter.providerType().isBlank())
                 .collect(java.util.stream.Collectors.toUnmodifiableMap(
                         ChatProviderAdapter::providerType,
                         Function.identity()

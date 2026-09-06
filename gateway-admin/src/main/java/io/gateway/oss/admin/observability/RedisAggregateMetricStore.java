@@ -46,7 +46,7 @@ public class RedisAggregateMetricStore implements AggregateMetricStore {
             redis.call('HINCRBY', KEYS[1], 'tokens', ARGV[3])
             redis.call('HINCRBY', KEYS[1], 'costMicros', ARGV[4])
             redis.call('EXPIRE', KEYS[1], ARGV[5])
-            return OK
+            return {ok = 'OK'}
             """;
 
     private final StringRedisTemplate redisTemplate;

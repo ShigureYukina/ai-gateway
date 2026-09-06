@@ -59,6 +59,10 @@ abstract class RedisIntegrationTestSupport {
 
     @DynamicPropertySource
     static void registerContainerProperties(DynamicPropertyRegistry registry) {
+        // 所有 IT 上下文共享同一个单例 Redis 容器：pub/sub 配置同步会让
+        // 一个上下文的 admin 写操作把其他上下文的 properties 配置覆盖掉
+        // （每个上下文收到通知后从共享 store 重载），必须关闭
+        registry.add("gateway.config.sync.enabled", () -> "false");
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
