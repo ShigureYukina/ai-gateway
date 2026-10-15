@@ -32,7 +32,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc.version>2.6.0</springdoc.version>
         <logstash.version>7.4</logstash.version>
-        <caffeine.version>3.1.8</caffeine.version>
+        <caffeine.version>3.2.4</caffeine.version>
         <jackson-module-blackbird.version>2.17.3</jackson-module-blackbird.version>
         <reactor-test.version>3.6.11</reactor-test.version>
         <h2.version>2.2.224</h2.version>
